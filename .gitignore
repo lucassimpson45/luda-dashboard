@@ -1,0 +1,25 @@
+# dependencies
+node_modules
+.pnp
+.pnp.js
+
+# build
+.next
+out
+dist
+build
+
+# local env
+.env
+.env.local
+.env.*.local
+
+# persisted webhook data (file-store fallback)
+.data
+
+# debug
+npm-debug.log*
+.DS_Store
+
+# typescript
+*.tsbuildinfo
