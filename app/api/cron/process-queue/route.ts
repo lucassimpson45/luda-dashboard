@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { sendSms } from '@/lib/messaging/sms'
+import { sendEmail } from '@/lib/messaging/email'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
+
+type SequenceStep = {
+  step: number
+  delay_hours: number
+  channel: string
+  template: string
+}
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization')
@@ -48,28 +56,25 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ processed: 0 })
   }
 
-  const results = []
+  const results: Array<Record<string, unknown>> = []
 
   for (const contact of contacts) {
     const campaign = contact.outbound_campaigns as unknown as {
       id: string
-      sequence: Array<{
-        step: number
-        delay_hours: number
-        channel: string
-        template: string
-      }>
+      sequence: SequenceStep[]
     } | null
 
     const { data: configRow } = await supabaseAdmin
       .from('clients_messaging_config')
-      .select('twilio_number, notification_email')
+      .select('twilio_number, notification_email, resend_from_email, resend_from_name')
       .eq('client_id', contact.client_id)
       .maybeSingle()
 
     const config = configRow as {
       twilio_number: string | null
       notification_email: string | null
+      resend_from_email: string | null
+      resend_from_name: string | null
     } | null
 
     if (!campaign || !config) continue
@@ -87,7 +92,30 @@ export async function GET(req: NextRequest) {
       continue
     }
 
-    if (currentStep.channel === 'sms') {
+    const ch = (currentStep.channel || '').toLowerCase()
+    const contactPayload = {
+      name: contact.name,
+      phone: contact.phone,
+      email: contact.email,
+      metadata: contact.metadata,
+    }
+
+    const advanceAfterSend = async () => {
+      const nextStep = sequence[stepIndex + 1]
+      const nextSendAt = nextStep
+        ? new Date(Date.now() + nextStep.delay_hours * 60 * 60 * 1000).toISOString()
+        : null
+      await supabaseAdmin
+        .from('outbound_contacts')
+        .update({
+          current_step: stepIndex + 1,
+          next_send_at: nextSendAt,
+          status: nextSendAt ? 'active' : 'completed',
+        })
+        .eq('id', contact.id)
+    }
+
+    if (ch === 'sms') {
       if (!config.twilio_number || !contact.phone) continue
 
       const result = await sendSms({
@@ -106,24 +134,102 @@ export async function GET(req: NextRequest) {
       })
 
       if (result.success) {
-        const nextStep = sequence[stepIndex + 1]
-        const nextSendAt = nextStep
-          ? new Date(Date.now() + nextStep.delay_hours * 60 * 60 * 1000).toISOString()
-          : null
-
-        await supabaseAdmin
-          .from('outbound_contacts')
-          .update({
-            current_step: stepIndex + 1,
-            next_send_at: nextSendAt,
-            status: nextSendAt ? 'active' : 'completed',
-          })
-          .eq('id', contact.id)
-
+        await advanceAfterSend()
         results.push({ contactId: contact.id, action: 'sent', step: stepIndex })
       } else {
         results.push({ contactId: contact.id, action: 'failed', error: result.error })
       }
+      continue
+    }
+
+    if (ch === 'email') {
+      if (!contact.email?.trim() || !config.resend_from_email?.trim()) continue
+
+      const result = await sendEmail({
+        contactId: contact.id,
+        clientId: contact.client_id,
+        campaignId: contact.campaign_id,
+        stepIndex,
+        template: currentStep.template,
+        fromEmail: config.resend_from_email.trim(),
+        fromName: config.resend_from_name,
+        toEmail: contact.email.trim(),
+        contact: contactPayload,
+      })
+
+      if (result.success) {
+        await advanceAfterSend()
+        results.push({ contactId: contact.id, action: 'sent', step: stepIndex })
+      } else {
+        results.push({ contactId: contact.id, action: 'failed', error: result.error })
+      }
+      continue
+    }
+
+    if (ch === 'both') {
+      if (
+        !config.twilio_number ||
+        !contact.phone ||
+        !contact.email?.trim() ||
+        !config.resend_from_email?.trim()
+      ) {
+        continue
+      }
+
+      const smsResult = await sendSms({
+        contactId: contact.id,
+        clientId: contact.client_id,
+        campaignId: contact.campaign_id,
+        stepIndex,
+        template: currentStep.template,
+        fromNumber: config.twilio_number,
+        contact: {
+          name: contact.name,
+          phone: contact.phone,
+          email: contact.email,
+          metadata: contact.metadata,
+        },
+      })
+
+      if (!smsResult.success) {
+        results.push({
+          contactId: contact.id,
+          action: 'failed',
+          error: smsResult.error,
+          partial: 'sms_failed_before_email',
+        })
+        continue
+      }
+
+      const emailResult = await sendEmail({
+        contactId: contact.id,
+        clientId: contact.client_id,
+        campaignId: contact.campaign_id,
+        stepIndex,
+        template: currentStep.template,
+        fromEmail: config.resend_from_email.trim(),
+        fromName: config.resend_from_name,
+        toEmail: contact.email.trim(),
+        contact: contactPayload,
+      })
+
+      if (emailResult.success) {
+        await advanceAfterSend()
+        results.push({
+          contactId: contact.id,
+          action: 'sent',
+          step: stepIndex,
+          channels: ['sms', 'email'],
+        })
+      } else {
+        results.push({
+          contactId: contact.id,
+          action: 'failed',
+          error: emailResult.error,
+          partial: 'sms_sent_email_failed',
+        })
+      }
+      continue
     }
   }
 
