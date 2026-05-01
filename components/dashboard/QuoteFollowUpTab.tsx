@@ -334,9 +334,16 @@ export function QuoteFollowUpTab({ contacts }: Props) {
                     onClick={() => setExpandedKey((k) => (k === rowKey ? null : rowKey))}
                     className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-neutral-100/80 dark:hover:bg-neutral-800/50"
                   >
-                    <span className="inline-flex max-w-[28%] shrink-0 truncate rounded-full bg-neutral-200/80 px-2.5 py-1 text-xs font-medium text-neutral-800 dark:bg-neutral-700 dark:text-neutral-100">
-                      {displayName}
-                    </span>
+                    <div className="flex min-w-0 max-w-[36%] shrink-0 items-baseline gap-1 sm:max-w-[40%]">
+                      <span className="inline-flex min-w-0 max-w-full truncate rounded-full bg-neutral-200/80 px-2.5 py-1 text-xs font-medium text-neutral-800 dark:bg-neutral-700 dark:text-neutral-100">
+                        {displayName}
+                      </span>
+                      {contact.phone && displayName !== contact.phone.trim() && (
+                        <span className="shrink-0 text-[11px] text-neutral-400 dark:text-neutral-500">
+                          · {contact.phone}
+                        </span>
+                      )}
+                    </div>
                     <p className="min-w-0 flex-1 truncate text-sm text-neutral-700 dark:text-neutral-300">{msg.body}</p>
                     <span className="shrink-0 text-xs tabular-nums text-neutral-500 dark:text-neutral-400">
                       {formatSentTimeLocal(msg.sent_at, msg.created_at)}
@@ -389,9 +396,16 @@ export function QuoteFollowUpTab({ contacts }: Props) {
                     onClick={() => setExpandedKey((k) => (k === rowKey ? null : rowKey))}
                     className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-neutral-100/80 dark:hover:bg-neutral-800/50"
                   >
-                    <span className="inline-flex max-w-[28%] shrink-0 truncate rounded-full bg-neutral-200/80 px-2.5 py-1 text-xs font-medium text-neutral-800 dark:bg-neutral-700 dark:text-neutral-100">
-                      {displayName}
-                    </span>
+                    <div className="flex min-w-0 max-w-[36%] shrink-0 items-baseline gap-1 sm:max-w-[40%]">
+                      <span className="inline-flex min-w-0 max-w-full truncate rounded-full bg-neutral-200/80 px-2.5 py-1 text-xs font-medium text-neutral-800 dark:bg-neutral-700 dark:text-neutral-100">
+                        {displayName}
+                      </span>
+                      {contact.email && displayName !== contact.email.trim() && (
+                        <span className="min-w-0 truncate text-[11px] text-neutral-400 dark:text-neutral-500">
+                          · {contact.email}
+                        </span>
+                      )}
+                    </div>
                     <p className="min-w-0 flex-1 truncate text-sm text-neutral-700 dark:text-neutral-300">{msg.body}</p>
                     <span className="shrink-0 text-xs tabular-nums text-neutral-500 dark:text-neutral-400">
                       {formatSentTimeLocal(msg.sent_at, msg.created_at)}
