@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
   const results = []
 
   for (const contact of contacts) {
-    const campaign = contact.outbound_campaigns as {
+    const campaign = contact.outbound_campaigns as unknown as {
       id: string
       sequence: Array<{
         step: number
@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
       }>
     } | null
 
-    const config = contact.clients_messaging_config as {
+    const config = contact.clients_messaging_config as unknown as {
       twilio_number: string | null
       notification_email: string | null
     } | null
