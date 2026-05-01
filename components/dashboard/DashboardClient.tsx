@@ -9,12 +9,11 @@ import type {
   DashboardTabId,
   NormalisedCall,
   DashboardStats,
-  StoredQuote,
   StoredReview,
 } from '@/types'
 import { DashboardHeader } from './DashboardHeader'
 import { ReceptionistTab } from './ReceptionistTab'
-import { QuoteFollowUpTab } from './QuoteFollowUpTab'
+import { QuoteFollowUpTab, type FollowUpContact } from './QuoteFollowUpTab'
 import { ReviewsTab } from './ReviewsTab'
 import { OutboundTab } from './OutboundTab'
 
@@ -32,13 +31,13 @@ const TABS: {
 type InitialBundle = {
   receptionist: { calls: NormalisedCall[]; stats: DashboardStats | null; error: string | null }
   outbound: { calls: NormalisedCall[]; error: string | null }
-  quotes: StoredQuote[]
+  followUpContacts: FollowUpContact[]
   reviews: StoredReview[]
 }
 
 type CallsApiOk = { calls: NormalisedCall[]; stats: DashboardStats }
 type OutboundApiOk = { calls: NormalisedCall[]; error: string | null }
-type QuotesApiOk = { quotes: StoredQuote[] }
+type FollowupApiOk = { contacts: FollowUpContact[] }
 type ReviewsApiOk = { reviews: StoredReview[] }
 
 export default function DashboardClient({
@@ -57,17 +56,17 @@ export default function DashboardClient({
   const [recError, setRecError] = useState<string | null>(initial.receptionist.error)
   const [outboundCalls, setOutboundCalls] = useState(initial.outbound.calls)
   const [outError, setOutError] = useState<string | null>(initial.outbound.error)
-  const [quotes, setQuotes] = useState(initial.quotes)
+  const [followUpContacts, setFollowUpContacts] = useState(initial.followUpContacts)
   const [reviews, setReviews] = useState(initial.reviews)
   const [refreshing, setRefreshing] = useState(false)
 
   const refreshAll = useCallback(async () => {
     setRefreshing(true)
     try {
-      const [cRes, oRes, qRes, rRes] = await Promise.all([
+      const [cRes, oRes, fRes, rRes] = await Promise.all([
         fetch('/api/calls'),
         fetch('/api/outbound'),
-        fetch('/api/quotes'),
+        fetch('/api/followup'),
         fetch('/api/reviews'),
       ])
 
@@ -89,9 +88,9 @@ export default function DashboardClient({
         setOutError(`Outbound request failed (${oRes.status})`)
       }
 
-      if (qRes.ok) {
-        const data = (await qRes.json()) as QuotesApiOk
-        setQuotes(data.quotes)
+      if (fRes.ok) {
+        const data = (await fRes.json()) as FollowupApiOk
+        setFollowUpContacts(data.contacts)
       }
 
       if (rRes.ok) {
@@ -155,7 +154,7 @@ export default function DashboardClient({
         {tab === 'receptionist' && (
           <ReceptionistTab calls={calls} stats={stats} error={recError} />
         )}
-        {tab === 'quotes' && <QuoteFollowUpTab quotes={quotes} />}
+        {tab === 'quotes' && <QuoteFollowUpTab contacts={followUpContacts} />}
         {tab === 'reviews' && <ReviewsTab reviews={reviews} />}
         {tab === 'outbound' && <OutboundTab calls={outboundCalls} error={outError} />}
 
@@ -175,7 +174,6 @@ export default function DashboardClient({
               className="h-auto max-h-5 w-auto object-contain"
             />
           </a>
-          <span>· Retell + N8N</span>
         </p>
       </div>
     </div>

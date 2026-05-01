@@ -1,3 +1,4 @@
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getClientSessionId } from '@/lib/auth'
 import { getClientById } from '@/lib/clients'
@@ -7,14 +8,10 @@ import {
   normaliseCall,
   computeStats,
 } from '@/lib/retell'
-import {
-  fetchQuotes,
-  fetchReviews,
-  quoteLeadsToStored,
-  reviewRequestsToStored,
-} from '@/lib/airtable'
+import { fetchReviews, reviewRequestsToStored } from '@/lib/airtable'
 import DashboardClient from '@/components/dashboard/DashboardClient'
-import type { NormalisedCall, DashboardStats, StoredQuote, StoredReview } from '@/types'
+import type { FollowUpContact } from '@/components/dashboard/QuoteFollowUpTab'
+import type { NormalisedCall, DashboardStats, StoredReview } from '@/types'
 
 export const revalidate = 60
 
@@ -66,14 +63,26 @@ export default async function DashboardPage() {
     }
   }
 
-  let quotes: StoredQuote[] = []
+  let followUpContacts: FollowUpContact[] = []
   let reviews: StoredReview[] = []
   try {
-    const [quoteLeads, reviewRows] = await Promise.all([fetchQuotes(), fetchReviews()])
-    quotes = quoteLeadsToStored(quoteLeads)
+    const h = headers()
+    const host = h.get('host') ?? 'localhost:3000'
+    const protocol = process.env.NODE_ENV === 'development' ? 'http' : 'https'
+    const [followupRes, reviewRows] = await Promise.all([
+      fetch(`${protocol}://${host}/api/followup`, {
+        cache: 'no-store',
+        headers: { cookie: h.get('cookie') ?? '' },
+      }),
+      fetchReviews(),
+    ])
+    if (followupRes.ok) {
+      const data = (await followupRes.json()) as { contacts: FollowUpContact[] }
+      followUpContacts = data.contacts ?? []
+    }
     reviews = reviewRequestsToStored(reviewRows)
   } catch (e) {
-    console.error('[dashboard] Airtable quotes/reviews', e)
+    console.error('[dashboard] followup/reviews', e)
   }
 
   return (
@@ -83,7 +92,7 @@ export default async function DashboardPage() {
       initial={{
         receptionist: { calls, stats, error },
         outbound: { calls: outboundCalls, error: outboundError },
-        quotes,
+        followUpContacts,
         reviews,
       }}
     />

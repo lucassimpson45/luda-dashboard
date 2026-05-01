@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import twilio from 'twilio'
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+}
 
 export async function POST(req: NextRequest) {
   const twilioSignature = req.headers.get('x-twilio-signature') ?? ''
@@ -31,6 +33,8 @@ export async function POST(req: NextRequest) {
   if (!inboundFrom || !inboundTo) {
     return new NextResponse('Bad Request', { status: 400 })
   }
+
+  const supabaseAdmin = getSupabaseAdmin()
 
   const optOutKeywords = ['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit']
   const isOptOut = optOutKeywords.includes(inboundBody?.toLowerCase().trim())
