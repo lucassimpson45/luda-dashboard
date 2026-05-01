@@ -62,6 +62,7 @@ export async function GET(req: NextRequest) {
     const campaign = contact.outbound_campaigns as unknown as {
       id: string
       sequence: SequenceStep[]
+      channel: string | null
     } | null
 
     const { data: configRow } = await supabaseAdmin
@@ -92,7 +93,9 @@ export async function GET(req: NextRequest) {
       continue
     }
 
-    const ch = (currentStep.channel || '').toLowerCase()
+    const campaignChannel = (campaign.channel ?? '').toLowerCase()
+    const stepChannel = (currentStep.channel ?? '').toLowerCase()
+    const ch = campaignChannel === 'both' ? 'both' : stepChannel
     const contactPayload = {
       name: contact.name,
       phone: contact.phone,
