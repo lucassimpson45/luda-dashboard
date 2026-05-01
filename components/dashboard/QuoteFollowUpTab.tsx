@@ -1,10 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { format, parseISO } from 'date-fns'
-import { MessageSquare, Mail, CheckCircle2, Clock, XCircle, AlertCircle } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, MessageSquare, Mail, CheckCircle2, Clock, XCircle, AlertCircle } from 'lucide-react'
 import { clsx } from 'clsx'
-import { DatePicker, todayYmdUtc } from './DatePicker'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -37,24 +35,98 @@ type Props = { contacts: FollowUpContact[] }
 
 type StatusFilterId = 'all' | 'active' | 'replied' | 'completed' | 'opted_out'
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Local calendar helpers (viewer timezone) ────────────────────────────────
 
-function messageYmdUtc(m: { sent_at: string | null; created_at: string }): string {
-  const iso = m.sent_at ?? m.created_at
-  try {
-    return parseISO(iso).toISOString().slice(0, 10)
-  } catch {
-    return new Date(iso).toISOString().slice(0, 10)
-  }
+function todayYmdLocal(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
-function formatSentTime(iso: string | null, fallbackIso: string) {
-  const raw = iso ?? fallbackIso
-  try {
-    return format(parseISO(raw), 'h:mm a')
-  } catch {
-    return raw
-  }
+function addDaysLocal(ymd: string, deltaDays: number): string {
+  const [y, m, d] = ymd.split('-').map(Number)
+  const dt = new Date(y, m - 1, d + deltaDays)
+  const yy = dt.getFullYear()
+  const mm = String(dt.getMonth() + 1).padStart(2, '0')
+  const dd = String(dt.getDate()).padStart(2, '0')
+  return `${yy}-${mm}-${dd}`
+}
+
+/** Calendar day in the viewer's timezone for an ISO timestamp. */
+function messageLocalYmd(sentAt: string | null, createdAt: string): string {
+  const d = new Date(sentAt ?? createdAt)
+  if (Number.isNaN(d.getTime())) return todayYmdLocal()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function formatDatePillLocal(ymd: string): string {
+  const [y, m, d] = ymd.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  })
+}
+
+function formatSentTimeLocal(iso: string | null, fallbackIso: string): string {
+  const d = new Date(iso ?? fallbackIso)
+  if (Number.isNaN(d.getTime())) return iso ?? fallbackIso
+  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+}
+
+function FollowUpDatePicker({
+  selectedDate,
+  onChange,
+  minDate,
+  maxDate,
+}: {
+  selectedDate: string
+  onChange: (date: string) => void
+  minDate?: string
+  maxDate?: string
+}) {
+  const canGoPrev = minDate != null ? selectedDate > minDate : true
+  const canGoNext = maxDate != null ? selectedDate < maxDate : true
+
+  return (
+    <div className="flex w-full min-w-0 items-center gap-1 sm:w-auto sm:shrink-0">
+      <button
+        type="button"
+        aria-label="Previous day"
+        disabled={!canGoPrev}
+        onClick={() => canGoPrev && onChange(addDaysLocal(selectedDate, -1))}
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+      >
+        <ChevronLeft size={18} aria-hidden />
+      </button>
+      <div
+        className="flex min-w-0 flex-1 items-center justify-center rounded-full border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm font-medium text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-white sm:min-w-[5.5rem] sm:flex-none"
+        title={selectedDate}
+      >
+        <span className="truncate">{formatDatePillLocal(selectedDate)}</span>
+      </div>
+      <button
+        type="button"
+        aria-label="Next day"
+        disabled={!canGoNext}
+        onClick={() => canGoNext && onChange(addDaysLocal(selectedDate, 1))}
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+      >
+        <ChevronRight size={18} aria-hidden />
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange(todayYmdLocal())}
+        className="ml-1 shrink-0 rounded-full border border-brand/40 bg-brand/10 px-3 py-2 text-xs font-semibold text-brand transition-colors hover:bg-brand/15 dark:bg-brand/15 dark:hover:bg-brand/25"
+      >
+        Today
+      </button>
+    </div>
+  )
 }
 
 function contactMatchesStatusFilter(c: FollowUpContact, filterId: StatusFilterId): boolean {
@@ -104,15 +176,15 @@ function MetricCard({ label, value }: { label: string; value: string }) {
 }
 
 function minPickerYmd(contacts: FollowUpContact[]): string {
-  const today = todayYmdUtc()
+  const today = todayYmdLocal()
   let min = today
   for (const c of contacts) {
     if (c.last_sms) {
-      const y = messageYmdUtc(c.last_sms)
+      const y = messageLocalYmd(c.last_sms.sent_at, c.last_sms.created_at)
       if (y < min) min = y
     }
     if (c.last_email) {
-      const y = messageYmdUtc(c.last_email)
+      const y = messageLocalYmd(c.last_email.sent_at, c.last_email.created_at)
       if (y < min) min = y
     }
   }
@@ -124,7 +196,8 @@ function minPickerYmd(contacts: FollowUpContact[]): string {
 export function QuoteFollowUpTab({ contacts }: Props) {
   const [localContacts, setLocalContacts] = useState<FollowUpContact[]>(contacts)
   const [activeFilter, setActiveFilter] = useState<StatusFilterId>('all')
-  const [selectedDate, setSelectedDate] = useState<string>(() => todayYmdUtc())
+  const [selectedDate, setSelectedDate] = useState<string>(() => todayYmdLocal())
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
 
   useEffect(() => {
     setLocalContacts(contacts)
@@ -147,7 +220,10 @@ export function QuoteFollowUpTab({ contacts }: Props) {
 
   const smsRows = useMemo(() => {
     const rows = statusFiltered
-      .filter((c) => c.last_sms && messageYmdUtc(c.last_sms) === selectedDate)
+      .filter(
+        (c) =>
+          c.last_sms && messageLocalYmd(c.last_sms.sent_at, c.last_sms.created_at) === selectedDate
+      )
       .map((c) => ({ contact: c, msg: c.last_sms! }))
     rows.sort(
       (a, b) =>
@@ -159,7 +235,11 @@ export function QuoteFollowUpTab({ contacts }: Props) {
 
   const emailRows = useMemo(() => {
     const rows = statusFiltered
-      .filter((c) => c.last_email && messageYmdUtc(c.last_email) === selectedDate)
+      .filter(
+        (c) =>
+          c.last_email &&
+          messageLocalYmd(c.last_email.sent_at, c.last_email.created_at) === selectedDate
+      )
       .map((c) => ({ contact: c, msg: c.last_email! }))
     rows.sort(
       (a, b) =>
@@ -170,7 +250,7 @@ export function QuoteFollowUpTab({ contacts }: Props) {
   }, [statusFiltered, selectedDate])
 
   const earliestYmd = useMemo(() => minPickerYmd(localContacts), [localContacts])
-  const todayStr = todayYmdUtc()
+  const todayStr = todayYmdLocal()
 
   const filters: { id: StatusFilterId; label: string }[] = [
     { id: 'all', label: 'All' },
@@ -220,7 +300,7 @@ export function QuoteFollowUpTab({ contacts }: Props) {
       </div>
 
       <div className="w-full min-w-0">
-        <DatePicker
+        <FollowUpDatePicker
           selectedDate={selectedDate}
           onChange={setSelectedDate}
           minDate={earliestYmd}
@@ -242,19 +322,40 @@ export function QuoteFollowUpTab({ contacts }: Props) {
           <ul className="space-y-2">
             {smsRows.map(({ contact, msg }) => {
               const displayName = contact.name ?? contact.phone ?? contact.email ?? 'Unknown'
+              const rowKey = `sms:${contact.id}:${msg.id}`
+              const open = expandedKey === rowKey
               return (
                 <li
-                  key={`sms-${contact.id}-${msg.id}`}
-                  className="flex items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-950/40"
+                  key={rowKey}
+                  className="overflow-hidden rounded-xl border border-neutral-100 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950/40"
                 >
-                  <span className="inline-flex max-w-[28%] shrink-0 truncate rounded-full bg-neutral-200/80 px-2.5 py-1 text-xs font-medium text-neutral-800 dark:bg-neutral-700 dark:text-neutral-100">
-                    {displayName}
-                  </span>
-                  <p className="min-w-0 flex-1 truncate text-sm text-neutral-700 dark:text-neutral-300">{msg.body}</p>
-                  <span className="shrink-0 text-xs tabular-nums text-neutral-500 dark:text-neutral-400">
-                    {formatSentTime(msg.sent_at, msg.created_at)}
-                  </span>
-                  <StatusBadge status={msg.status} />
+                  <button
+                    type="button"
+                    onClick={() => setExpandedKey((k) => (k === rowKey ? null : rowKey))}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-neutral-100/80 dark:hover:bg-neutral-800/50"
+                  >
+                    <span className="inline-flex max-w-[28%] shrink-0 truncate rounded-full bg-neutral-200/80 px-2.5 py-1 text-xs font-medium text-neutral-800 dark:bg-neutral-700 dark:text-neutral-100">
+                      {displayName}
+                    </span>
+                    <p className="min-w-0 flex-1 truncate text-sm text-neutral-700 dark:text-neutral-300">{msg.body}</p>
+                    <span className="shrink-0 text-xs tabular-nums text-neutral-500 dark:text-neutral-400">
+                      {formatSentTimeLocal(msg.sent_at, msg.created_at)}
+                    </span>
+                    <StatusBadge status={msg.status} />
+                    <ChevronDown
+                      size={18}
+                      aria-hidden
+                      className={clsx(
+                        'shrink-0 text-neutral-400 transition-transform duration-200',
+                        open && 'rotate-180'
+                      )}
+                    />
+                  </button>
+                  {open && (
+                    <div className="border-t border-neutral-100 px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap text-neutral-800 dark:border-neutral-800 dark:text-neutral-200">
+                      {msg.body}
+                    </div>
+                  )}
                 </li>
               )
             })}
@@ -276,19 +377,40 @@ export function QuoteFollowUpTab({ contacts }: Props) {
           <ul className="space-y-2">
             {emailRows.map(({ contact, msg }) => {
               const displayName = contact.name ?? contact.email ?? contact.phone ?? 'Unknown'
+              const rowKey = `email:${contact.id}:${msg.id}`
+              const open = expandedKey === rowKey
               return (
                 <li
-                  key={`email-${contact.id}-${msg.id}`}
-                  className="flex items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-950/40"
+                  key={rowKey}
+                  className="overflow-hidden rounded-xl border border-neutral-100 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950/40"
                 >
-                  <span className="inline-flex max-w-[28%] shrink-0 truncate rounded-full bg-neutral-200/80 px-2.5 py-1 text-xs font-medium text-neutral-800 dark:bg-neutral-700 dark:text-neutral-100">
-                    {displayName}
-                  </span>
-                  <p className="min-w-0 flex-1 truncate text-sm text-neutral-700 dark:text-neutral-300">{msg.body}</p>
-                  <span className="shrink-0 text-xs tabular-nums text-neutral-500 dark:text-neutral-400">
-                    {formatSentTime(msg.sent_at, msg.created_at)}
-                  </span>
-                  <StatusBadge status={msg.status} />
+                  <button
+                    type="button"
+                    onClick={() => setExpandedKey((k) => (k === rowKey ? null : rowKey))}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-neutral-100/80 dark:hover:bg-neutral-800/50"
+                  >
+                    <span className="inline-flex max-w-[28%] shrink-0 truncate rounded-full bg-neutral-200/80 px-2.5 py-1 text-xs font-medium text-neutral-800 dark:bg-neutral-700 dark:text-neutral-100">
+                      {displayName}
+                    </span>
+                    <p className="min-w-0 flex-1 truncate text-sm text-neutral-700 dark:text-neutral-300">{msg.body}</p>
+                    <span className="shrink-0 text-xs tabular-nums text-neutral-500 dark:text-neutral-400">
+                      {formatSentTimeLocal(msg.sent_at, msg.created_at)}
+                    </span>
+                    <StatusBadge status={msg.status} />
+                    <ChevronDown
+                      size={18}
+                      aria-hidden
+                      className={clsx(
+                        'shrink-0 text-neutral-400 transition-transform duration-200',
+                        open && 'rotate-180'
+                      )}
+                    />
+                  </button>
+                  {open && (
+                    <div className="border-t border-neutral-100 px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap text-neutral-800 dark:border-neutral-800 dark:text-neutral-200">
+                      {msg.body}
+                    </div>
+                  )}
                 </li>
               )
             })}
