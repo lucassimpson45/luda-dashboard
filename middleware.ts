@@ -26,7 +26,11 @@ export function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
-  if (pathname.startsWith('/api/webhook') || pathname.startsWith('/api/health')) {
+  if (
+    pathname.startsWith('/api/webhook') ||
+    pathname.startsWith('/api/cron') ||
+    pathname.startsWith('/api/health')
+  ) {
     return NextResponse.next()
   }
 
