@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
         sequence,
         channel
       ),
-      clients_messaging_config!outbound_contacts_client_id_fkey (
+      clients_messaging_config (
         twilio_number,
         notification_email
       )
