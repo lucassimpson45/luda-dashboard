@@ -33,10 +33,6 @@ export async function GET(req: NextRequest) {
         id,
         sequence,
         channel
-      ),
-      clients_messaging_config (
-        twilio_number,
-        notification_email
       )
     `)
     .eq('status', 'active')
@@ -65,7 +61,13 @@ export async function GET(req: NextRequest) {
       }>
     } | null
 
-    const config = contact.clients_messaging_config as unknown as {
+    const { data: configRow } = await supabaseAdmin
+      .from('clients_messaging_config')
+      .select('twilio_number, notification_email')
+      .eq('client_id', contact.client_id)
+      .maybeSingle()
+
+    const config = configRow as {
       twilio_number: string | null
       notification_email: string | null
     } | null
