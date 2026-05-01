@@ -1,19 +1,31 @@
 import { redirect } from 'next/navigation'
-import { isAuthenticated } from '@/lib/auth'
+import { getClientSessionId } from '@/lib/auth'
+import { getClientById } from '@/lib/clients'
 import {
   fetchRetellCalls,
   fetchOutboundRetellCalls,
   normaliseCall,
   computeStats,
 } from '@/lib/retell'
-import { listQuotes, listReviews } from '@/lib/persistence'
+import {
+  fetchQuotes,
+  fetchReviews,
+  quoteLeadsToStored,
+  reviewRequestsToStored,
+} from '@/lib/airtable'
 import DashboardClient from '@/components/dashboard/DashboardClient'
-import type { NormalisedCall, DashboardStats } from '@/types'
+import type { NormalisedCall, DashboardStats, StoredQuote, StoredReview } from '@/types'
 
 export const revalidate = 60
 
 export default async function DashboardPage() {
-  if (!isAuthenticated()) {
+  const sessionClientId = getClientSessionId()
+  if (!sessionClientId) {
+    redirect('/login')
+  }
+
+  const client = await getClientById(sessionClientId)
+  if (!client?.active) {
     redirect('/login')
   }
 
@@ -22,12 +34,16 @@ export default async function DashboardPage() {
   let error: string | null = null
 
   try {
-    const rawCalls = await fetchRetellCalls(200)
-    calls = rawCalls
-      .filter((c) => c.call_status === 'ended')
-      .map(normaliseCall)
-      .sort((a, b) => (a.dateISO > b.dateISO ? -1 : 1))
-    stats = computeStats(calls)
+    if (!client.retell_agent_id?.trim()) {
+      error = 'No Retell agent ID is configured for your account. Contact support.'
+    } else {
+      const rawCalls = await fetchRetellCalls(200, client.retell_agent_id)
+      calls = rawCalls
+        .filter((c) => c.call_status === 'ended')
+        .map(normaliseCall)
+        .sort((a, b) => (a.dateISO > b.dateISO ? -1 : 1))
+      stats = computeStats(calls)
+    }
   } catch (err) {
     console.error('[dashboard]', err)
     error = 'Could not connect to Retell. Check your API key in .env.local.'
@@ -50,10 +66,20 @@ export default async function DashboardPage() {
     }
   }
 
-  const [quotes, reviews] = await Promise.all([listQuotes(), listReviews()])
+  let quotes: StoredQuote[] = []
+  let reviews: StoredReview[] = []
+  try {
+    const [quoteLeads, reviewRows] = await Promise.all([fetchQuotes(), fetchReviews()])
+    quotes = quoteLeadsToStored(quoteLeads)
+    reviews = reviewRequestsToStored(reviewRows)
+  } catch (e) {
+    console.error('[dashboard] Airtable quotes/reviews', e)
+  }
 
   return (
     <DashboardClient
+      businessName={client.name}
+      logoUrl={client.logo_url}
       initial={{
         receptionist: { calls, stats, error },
         outbound: { calls: outboundCalls, error: outboundError },

@@ -1,0 +1,98 @@
+'use client'
+
+import { useState } from 'react'
+import Image from 'next/image'
+import { useRouter } from 'next/navigation'
+import { ThemeToggle } from '@/components/brand/ThemeToggle'
+
+export default function AdminLoginPage() {
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const router = useRouter()
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setError('')
+
+    const res = await fetch('/api/admin/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    })
+
+    if (res.ok) {
+      router.push('/admin/dashboard')
+    } else {
+      setError('Incorrect password. Try again.')
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="relative min-h-screen bg-neutral-50 px-4 dark:bg-neutral-950">
+      <div className="absolute right-4 top-4 sm:right-6 sm:top-6">
+        <ThemeToggle />
+      </div>
+
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="w-full max-w-sm">
+          <div className="mb-8 flex justify-center">
+            <Image src="/luda-no-background.png" alt="Luda AI" width={40} height={40} priority />
+          </div>
+
+          <div className="rounded-2xl border border-neutral-200 bg-white p-8 dark:border-neutral-800 dark:bg-neutral-900">
+            <h1 className="mb-1 text-xl font-semibold text-neutral-900 dark:text-white">Luda AI — Admin</h1>
+            <p className="mb-6 text-sm text-neutral-500 dark:text-neutral-400">
+              Enter the admin password to manage client dashboards.
+            </p>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm text-neutral-600 dark:text-neutral-400" htmlFor="admin-password">
+                  Password
+                </label>
+                <input
+                  id="admin-password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-900 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+                  placeholder="Admin password"
+                  required
+                />
+              </div>
+
+              {error && (
+                <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-300">
+                  {error}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full rounded-lg bg-brand py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-hover disabled:opacity-50"
+              >
+                {loading ? 'Signing in…' : 'Sign in'}
+              </button>
+            </form>
+          </div>
+
+          <p className="mt-6 flex items-center justify-center gap-2 text-center text-xs text-neutral-400 dark:text-neutral-500">
+            <span>Powered by</span>
+            <a
+              href="https://goluda.ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex shrink-0 opacity-90 transition-opacity hover:opacity-100"
+            >
+              <Image src="/luda-no-background.png" alt="Luda AI" width={40} height={40} />
+            </a>
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}

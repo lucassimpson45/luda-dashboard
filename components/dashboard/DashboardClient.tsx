@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { clsx } from 'clsx'
+import { Headphones, FileText, MessageSquareQuote, PhoneOutgoing } from 'lucide-react'
 import type {
   DashboardTabId,
   NormalisedCall,
@@ -10,18 +12,21 @@ import type {
   StoredQuote,
   StoredReview,
 } from '@/types'
-import { LudaLogo } from '@/components/brand/LudaLogo'
 import { DashboardHeader } from './DashboardHeader'
 import { ReceptionistTab } from './ReceptionistTab'
 import { QuoteFollowUpTab } from './QuoteFollowUpTab'
 import { ReviewsTab } from './ReviewsTab'
 import { OutboundTab } from './OutboundTab'
 
-const TABS: { id: DashboardTabId; label: string }[] = [
-  { id: 'receptionist', label: 'Receptionist' },
-  { id: 'quotes', label: 'Quote follow-up' },
-  { id: 'reviews', label: 'Reviews' },
-  { id: 'outbound', label: 'Outbound' },
+const TABS: {
+  id: DashboardTabId
+  label: string
+  icon: typeof Headphones
+}[] = [
+  { id: 'receptionist', label: 'Receptionist', icon: Headphones },
+  { id: 'quotes', label: 'Quote follow-up', icon: FileText },
+  { id: 'reviews', label: 'Reviews', icon: MessageSquareQuote },
+  { id: 'outbound', label: 'Outbound', icon: PhoneOutgoing },
 ]
 
 type InitialBundle = {
@@ -36,7 +41,15 @@ type OutboundApiOk = { calls: NormalisedCall[]; error: string | null }
 type QuotesApiOk = { quotes: StoredQuote[] }
 type ReviewsApiOk = { reviews: StoredReview[] }
 
-export default function DashboardClient({ initial }: { initial: InitialBundle }) {
+export default function DashboardClient({
+  businessName,
+  logoUrl,
+  initial,
+}: {
+  businessName: string
+  logoUrl: string | null
+  initial: InitialBundle
+}) {
   const router = useRouter()
   const [tab, setTab] = useState<DashboardTabId>('receptionist')
   const [calls, setCalls] = useState(initial.receptionist.calls)
@@ -106,25 +119,37 @@ export default function DashboardClient({ initial }: { initial: InitialBundle })
 
   return (
     <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950">
-      <div className="mx-auto max-w-5xl px-4 py-8">
-        <DashboardHeader refreshing={refreshing} onRefresh={() => void refreshAll()} onLogout={handleLogout} />
+      <div className="mx-auto max-w-5xl min-w-0 px-3 py-6 sm:px-4 sm:py-8">
+        <DashboardHeader
+          businessName={businessName}
+          logoUrl={logoUrl}
+          refreshing={refreshing}
+          onRefresh={() => void refreshAll()}
+          onLogout={handleLogout}
+        />
 
-        <div className="mb-6 flex gap-1 overflow-x-auto border-b border-neutral-200 dark:border-neutral-800">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className={clsx(
-                'whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors',
-                tab === t.id
-                  ? 'border-brand text-brand'
-                  : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
+        <div className="mb-6 flex gap-0.5 overflow-x-auto border-b border-neutral-200 pb-px dark:border-neutral-800 sm:gap-1">
+          {TABS.map((t) => {
+            const Icon = t.icon
+            return (
+              <button
+                key={t.id}
+                type="button"
+                aria-label={t.label}
+                title={t.label}
+                onClick={() => setTab(t.id)}
+                className={clsx(
+                  'flex shrink-0 items-center justify-center gap-2 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors sm:px-4',
+                  tab === t.id
+                    ? 'border-brand text-brand'
+                    : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
+                )}
+              >
+                <Icon className="h-[18px] w-[18px] shrink-0 sm:hidden" aria-hidden />
+                <span className="hidden whitespace-nowrap sm:inline">{t.label}</span>
+              </button>
+            )
+          })}
         </div>
 
         {tab === 'receptionist' && (
@@ -136,7 +161,20 @@ export default function DashboardClient({ initial }: { initial: InitialBundle })
 
         <p className="mt-8 flex flex-wrap items-center justify-center gap-2 text-center text-xs text-neutral-300 dark:text-neutral-600">
           <span>Powered by</span>
-          <LudaLogo href="https://goluda.ai" height={20} className="opacity-90" />
+          <a
+            href="https://goluda.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex shrink-0 opacity-90 transition-opacity hover:opacity-100"
+          >
+            <Image
+              src="/luda-ai-logo.png"
+              alt="Luda AI"
+              width={560}
+              height={140}
+              className="h-auto max-h-5 w-auto object-contain"
+            />
+          </a>
           <span>· Retell + N8N</span>
         </p>
       </div>

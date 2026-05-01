@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
-import { LudaLogo } from '@/components/brand/LudaLogo'
 import { ThemeToggle } from '@/components/brand/ThemeToggle'
 
 export default function LoginPage() {
@@ -39,7 +39,7 @@ export default function LoginPage() {
       <div className="flex min-h-screen items-center justify-center">
         <div className="w-full max-w-sm">
           <div className="mb-8 flex justify-center">
-            <LudaLogo height={48} priority />
+            <Image src="/luda-no-background.png" alt="Luda AI" width={40} height={40} priority />
           </div>
 
           <div className="rounded-2xl border border-neutral-200 bg-white p-8 dark:border-neutral-800 dark:bg-neutral-900">
@@ -82,7 +82,14 @@ export default function LoginPage() {
 
           <p className="mt-6 flex items-center justify-center gap-2 text-center text-xs text-neutral-400 dark:text-neutral-500">
             <span>Powered by</span>
-            <LudaLogo href="https://goluda.ai" height={20} className="opacity-90" />
+            <a
+              href="https://goluda.ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex shrink-0 opacity-90 transition-opacity hover:opacity-100"
+            >
+              <Image src="/luda-no-background.png" alt="Luda AI" width={40} height={40} />
+            </a>
           </p>
         </div>
       </div>

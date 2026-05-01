@@ -1,6 +1,7 @@
 import { X, Mic } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { NormalisedCall } from '@/types'
+import { callerDisplayLine } from '@/lib/retell'
 import { OutcomeBadge } from './OutcomeBadge'
 
 type Props = { call: NormalisedCall; onClose: () => void }
@@ -11,7 +12,7 @@ export function TranscriptDrawer({ call, onClose }: Props) {
       <div className="mb-4 flex items-start justify-between">
         <div>
           <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">
-            {call.callerName ?? call.callerNumber}
+            {callerDisplayLine(call)}
           </h3>
           <div className="mt-1 flex items-center gap-3">
             <span className="text-xs text-neutral-400">{call.date}</span>

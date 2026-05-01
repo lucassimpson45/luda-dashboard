@@ -1,26 +1,67 @@
-import { createClient, type VercelKV } from '@vercel/kv'
 import fs from 'fs/promises'
 import path from 'path'
-import type { StoredQuote, StoredReview } from '@/types'
-
-const QUOTES_KEY = 'luda:quotes'
-const REVIEWS_KEY = 'luda:reviews'
-const MAX_ITEMS = 500
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { getServiceRoleSupabase } from '@/lib/supabase-service'
+import type { QuoteLead, ReviewRequest, StoredQuote, StoredReview } from '@/types'
 
 const filePath = path.join(process.cwd(), '.data', 'webhook-store.json')
+const MAX_ITEMS = 500
+
+const isVercelRuntime = process.env.VERCEL === '1' || process.env.VERCEL === 'true'
 
 type FileStoreShape = { quotes: StoredQuote[]; reviews: StoredReview[] }
 
-function getKv(): VercelKV | null {
-  const url = process.env.KV_REST_API_URL
-  const token = process.env.KV_REST_API_TOKEN
-  if (!url || !token) return null
-  return createClient({ url, token })
+/** Server-only: service role + normalized project URL (see `lib/supabase-service.ts`). */
+export function getSupabase(): SupabaseClient | null {
+  return getServiceRoleSupabase()
 }
 
-export function getStoreBackend(): 'vercel-kv' | 'file' | 'unconfigured' {
-  if (getKv()) return 'vercel-kv'
+/** On Vercel, skip file I/O. Local file only when Supabase is not configured. */
+function canUseFileStore(): boolean {
+  if (isVercelRuntime) return false
+  if (getSupabase()) return false
+  return true
+}
+
+export function getStoreBackend(): 'supabase' | 'file' | 'unconfigured' {
+  if (getSupabase()) return 'supabase'
+  if (isVercelRuntime) return 'unconfigured'
   return 'file'
+}
+
+function quoteRowToStored(row: QuoteLead): StoredQuote {
+  return {
+    id: row.id,
+    receivedAt: new Date(row.received_at).toISOString(),
+    data: {
+      external_id: row.external_id ?? undefined,
+      lead_name: row.lead_name ?? undefined,
+      company: row.company ?? undefined,
+      email: row.email ?? undefined,
+      phone: row.phone ?? undefined,
+      status: row.status ?? undefined,
+      quote_value: row.quote_value ?? undefined,
+      notes: row.notes ?? undefined,
+    },
+    extra: row.extra && Object.keys(row.extra).length > 0 ? row.extra : undefined,
+  }
+}
+
+function reviewRowToStored(row: ReviewRequest): StoredReview {
+  return {
+    id: row.id,
+    receivedAt: new Date(row.received_at).toISOString(),
+    data: {
+      review_id: row.review_id ?? undefined,
+      author: row.author ?? undefined,
+      rating: row.rating != null && !Number.isNaN(Number(row.rating)) ? Number(row.rating) : undefined,
+      platform: row.platform ?? undefined,
+      text: row.body ?? undefined,
+      link: row.link ?? undefined,
+      sentiment: row.sentiment ?? undefined,
+    },
+    extra: row.extra && Object.keys(row.extra).length > 0 ? row.extra : undefined,
+  }
 }
 
 async function readFileStore(): Promise<FileStoreShape> {
@@ -46,37 +87,47 @@ async function writeFileStore(s: FileStoreShape): Promise<void> {
 }
 
 export async function listQuotes(): Promise<StoredQuote[]> {
-  const kv = getKv()
-  if (kv) {
-    const raw = await kv.get(QUOTES_KEY)
-    if (raw === null) return []
-    if (typeof raw === 'string') {
-      return JSON.parse(raw) as StoredQuote[]
+  const supa = getSupabase()
+  if (supa) {
+    const { data, error } = await supa
+      .from('quotes')
+      .select('*')
+      .order('received_at', { ascending: false })
+      .limit(MAX_ITEMS)
+    if (error) {
+      console.error('[persistence] listQuotes', error)
+      return []
     }
-    if (Array.isArray(raw)) {
-      return raw as StoredQuote[]
-    }
-    return []
+    if (!data || !Array.isArray(data)) return []
+    return (data as QuoteLead[]).map(quoteRowToStored)
   }
-  const s = await readFileStore()
-  return s.quotes
+  if (canUseFileStore()) {
+    const s = await readFileStore()
+    return s.quotes
+  }
+  return []
 }
 
 export async function listReviews(): Promise<StoredReview[]> {
-  const kv = getKv()
-  if (kv) {
-    const raw = await kv.get(REVIEWS_KEY)
-    if (raw === null) return []
-    if (typeof raw === 'string') {
-      return JSON.parse(raw) as StoredReview[]
+  const supa = getSupabase()
+  if (supa) {
+    const { data, error } = await supa
+      .from('reviews')
+      .select('*')
+      .order('received_at', { ascending: false })
+      .limit(MAX_ITEMS)
+    if (error) {
+      console.error('[persistence] listReviews', error)
+      return []
     }
-    if (Array.isArray(raw)) {
-      return raw as StoredReview[]
-    }
-    return []
+    if (!data || !Array.isArray(data)) return []
+    return (data as ReviewRequest[]).map(reviewRowToStored)
   }
-  const s = await readFileStore()
-  return s.reviews
+  if (canUseFileStore()) {
+    const s = await readFileStore()
+    return s.reviews
+  }
+  return []
 }
 
 function stripRecord(obj: Record<string, unknown>, keys: string[]): Record<string, unknown> {
@@ -122,12 +173,28 @@ export async function appendQuoteFromPayload(
     extra: hasExtra ? extra : undefined,
   }
 
-  const current = await listQuotes()
-  const next = [item, ...current].slice(0, MAX_ITEMS)
-  const kv = getKv()
-  if (kv) {
-    await kv.set(QUOTES_KEY, JSON.stringify(next))
-  } else {
+  const supa = getSupabase()
+  if (supa) {
+    const row: Omit<QuoteLead, 'received_at'> & { received_at: string } = {
+      id: item.id,
+      received_at: item.receivedAt,
+      external_id: known.external_id ?? null,
+      lead_name: known.lead_name ?? null,
+      company: known.company ?? null,
+      email: known.email ?? null,
+      phone: known.phone ?? null,
+      status: known.status ?? null,
+      quote_value: known.quote_value ?? null,
+      notes: known.notes ?? null,
+      extra: (hasExtra ? extra : null) as Record<string, unknown> | null,
+    }
+    const { error } = await supa.from('quotes').insert(row)
+    if (error) {
+      console.error('[persistence] insert quote', error)
+    }
+  } else if (canUseFileStore()) {
+    const current = await listQuotes()
+    const next = [item, ...current].slice(0, MAX_ITEMS)
     const s = await readFileStore()
     s.quotes = next
     await writeFileStore(s)
@@ -167,12 +234,38 @@ export async function appendReviewFromPayload(
     extra: hasExtra ? extra : undefined,
   }
 
-  const current = await listReviews()
-  const next = [item, ...current].slice(0, MAX_ITEMS)
-  const kv = getKv()
-  if (kv) {
-    await kv.set(REVIEWS_KEY, JSON.stringify(next))
-  } else {
+  const supa = getSupabase()
+  if (supa) {
+    const row: {
+      id: string
+      received_at: string
+      review_id: string | null
+      author: string | null
+      rating: number | null
+      platform: string | null
+      body: string | null
+      link: string | null
+      sentiment: string | null
+      extra: Record<string, unknown> | null
+    } = {
+      id: item.id,
+      received_at: item.receivedAt,
+      review_id: known.review_id ?? null,
+      author: known.author ?? null,
+      rating: known.rating ?? null,
+      platform: known.platform ?? null,
+      body: known.text ?? null,
+      link: known.link ?? null,
+      sentiment: known.sentiment ?? null,
+      extra: (hasExtra ? extra : null) as Record<string, unknown> | null,
+    }
+    const { error } = await supa.from('reviews').insert(row)
+    if (error) {
+      console.error('[persistence] insert review', error)
+    }
+  } else if (canUseFileStore()) {
+    const current = await listReviews()
+    const next = [item, ...current].slice(0, MAX_ITEMS)
     const s = await readFileStore()
     s.reviews = next
     await writeFileStore(s)
@@ -182,15 +275,19 @@ export async function appendReviewFromPayload(
 
 export async function pingStore(): Promise<{ ok: boolean; error?: string }> {
   try {
-    const kv = getKv()
-    if (kv) {
-      const k = 'luda:__ping__'
-      await kv.set(k, '1', { ex: 10 })
-      await kv.get(k)
+    const supa = getSupabase()
+    if (supa) {
+      const { error } = await supa.from('quotes').select('id').limit(1)
+      if (error) {
+        return { ok: false, error: error.message }
+      }
       return { ok: true }
     }
-    const s = await readFileStore()
-    await writeFileStore(s)
+    if (canUseFileStore()) {
+      const s = await readFileStore()
+      await writeFileStore(s)
+      return { ok: true }
+    }
     return { ok: true }
   } catch (e) {
     const err = e instanceof Error ? e.message : 'unknown error'

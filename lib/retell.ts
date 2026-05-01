@@ -1,4 +1,10 @@
-import { RetellCall, NormalisedCall, CallOutcome, DashboardStats } from '@/types'
+import {
+  RetellCall,
+  NormalisedCall,
+  CallOutcome,
+  DashboardStats,
+  type TranscriptTurn,
+} from '@/types'
 
 const RETELL_BASE = 'https://api.retellai.com'
 
@@ -46,13 +52,26 @@ export async function postListRetellCalls(
 
 // ─── Fetch calls from Retell ──────────────────────────────────────────────────
 
-export async function fetchRetellCalls(limit = 100): Promise<RetellCall[]> {
-  const agentId = process.env.RETELL_AGENT_ID
+/**
+ * Inbound receptionist calls. Pass `agentId` from the logged-in client row; otherwise falls back to
+ * `RETELL_AGENT_ID` for tooling and local dev.
+ */
+export async function fetchRetellCalls(limit = 100, agentId?: string): Promise<RetellCall[]> {
+  const resolved =
+    (agentId && agentId.trim()) || (process.env.RETELL_AGENT_ID && process.env.RETELL_AGENT_ID.trim()) || ''
   const apiKey = process.env.RETELL_API_KEY
 
   if (!apiKey) throw new Error('RETELL_API_KEY is not set')
+  if (!resolved) throw new Error('No Retell inbound agent ID configured')
 
-  return postListRetellCalls(apiKey, { limit, agentId: agentId || undefined })
+  const calls = await postListRetellCalls(apiKey, { limit, agentId: resolved })
+  if (calls.length > 0) {
+    console.log(
+      '[retell] first call call_analysis (debug)',
+      JSON.stringify(calls[0].call_analysis ?? null, null, 2)
+    )
+  }
+  return calls
 }
 
 // ─── Fetch a single call (for transcript deep-dive) ───────────────────────────
@@ -80,8 +99,7 @@ export function formatDuration(ms: number): string {
 }
 
 // ─── Classify call outcome from Retell analysis ───────────────────────────────
-// Retell's custom_analysis_data can carry whatever your agent prompt extracts.
-// Adjust the field names below to match your agent's analysis schema.
+// Post-call `custom_analysis_data` booleans (Retell field → outcome). First match wins.
 
 export function classifyOutcome(call: RetellCall): CallOutcome {
   const analysis = call.call_analysis
@@ -91,26 +109,201 @@ export function classifyOutcome(call: RetellCall): CallOutcome {
   const metaOutcome = call.metadata?.outcome as CallOutcome | undefined
   if (metaOutcome) return metaOutcome
 
-  // Otherwise derive from Retell's own analysis
   const custom = analysis?.custom_analysis_data as Record<string, unknown> | undefined
 
-  // These key names should match whatever you configured in your Retell agent's
-  // Post-call analysis schema. Common examples shown below:
   if (custom?.appointment_booked === true) return 'booked'
-  if (custom?.lead_qualified === true) return 'qualified'
+  if (custom?.booking_deleted === true) return 'booking_deleted'
+  if (custom?.booking_rescheduled === true) return 'booking_rescheduled'
+  if (custom?.callback_requested === true) return 'callback_requested'
+  if (custom?.quote_requested === true) return 'quote_requested'
   if (custom?.not_a_fit === true) return 'not_a_fit'
-
-  // Fallback: short calls with no booking are likely info-only
-  if (call.duration_ms < 45_000) return 'info_only'
 
   return 'info_only'
 }
 
 export const OUTCOME_LABELS: Record<CallOutcome, string> = {
   booked: 'Appointment booked',
-  qualified: 'Lead qualified',
+  booking_deleted: 'Booking deleted',
+  booking_rescheduled: 'Rescheduled',
+  callback_requested: 'Callback requested',
+  quote_requested: 'Quote requested',
   not_a_fit: 'Not a fit',
   info_only: 'Info only',
+}
+
+/** One-line display: "Jane Doe · +1…" when we have a name, else phone only. */
+export function callerDisplayLine(call: NormalisedCall): string {
+  const phone = call.callerNumber
+  const name = call.callerName?.trim()
+  return name ? `${name} · ${phone}` : phone
+}
+
+function formatNameCandidate(raw: string): string | undefined {
+  const s = raw.replace(/\s+/g, ' ').trim()
+  if (s.length < 2 || s.length > 80) return undefined
+  if (/^[\d\s\-+().]+$/.test(s)) return undefined
+  if (s.includes('@')) return undefined
+  if (/^(yes|no|ok|sure|hello|hi|thanks|thank you)\b/i.test(s)) return undefined
+  const words = s.split(/\s+/).filter(Boolean)
+  const titled = words
+    .map((w) => {
+      const lower = w.toLowerCase()
+      if (lower.length <= 2 && /^[a-z]{1,2}\.?$/i.test(w)) return lower.toUpperCase()
+      return lower.charAt(0).toUpperCase() + lower.slice(1)
+    })
+    .join(' ')
+  return titled || undefined
+}
+
+/** Strip known intros from the start only (case-insensitive). Repeat until stable. */
+const NAME_INTRO_PREFIXES: RegExp[] = [
+  /^my\s+name\s+is\b/i,
+  /^i['’]m\b/i,
+  /^i\s+am\b/i,
+  /^it['’]s\b/i,
+  /^it\s+is\b/i,
+  /^this\s+is\b/i,
+  /^yes\b/i,
+  /^sure\b/i,
+  /^yeah\b/i,
+  /^so\b/i,
+  /^well\b/i,
+  /^hi\b/i,
+  /^hello\b/i,
+]
+
+function stripLeadingNameIntros(raw: string): string {
+  let s = raw.replace(/\s+/g, ' ').trim()
+  for (let guard = 0; guard < 32; guard++) {
+    s = s.replace(/^[\s,;:.!?'"()]+/, '').trim()
+    let peeled = false
+    for (const re of NAME_INTRO_PREFIXES) {
+      if (re.test(s)) {
+        s = s.replace(re, '').trim()
+        peeled = true
+        break
+      }
+    }
+    if (!peeled) break
+  }
+  return s.replace(/^[\s,;:.!?'"()]+/, '').trim()
+}
+
+const NUMBER_WORDS = new Set([
+  'zero',
+  'one',
+  'two',
+  'three',
+  'four',
+  'five',
+  'six',
+  'seven',
+  'eight',
+  'nine',
+])
+
+const TRANSCRIPT_NAME_BLOCKLIST = new Set([
+  'yes',
+  'no',
+  'ok',
+  'okay',
+  'sure',
+  'good',
+  'well',
+  'just',
+  'the',
+  'and',
+  'yeah',
+  'yep',
+  'nope',
+  'hi',
+  'hello',
+  'thanks',
+  'thank',
+  'please',
+  'is',
+  'my',
+  'name',
+  'it',
+  'this',
+  'calling',
+])
+
+const PROPER_NOUN_WORD = /^[A-Z][a-z]+$/
+
+/**
+ * First two letter-only words after intro strip; each must be /^[A-Z][a-z]+$/ after formatting.
+ */
+function parseNuclearTranscriptName(remainder: string): string | undefined {
+  const rawWords = remainder.split(/\s+/).filter(Boolean).slice(0, 2)
+  if (rawWords.length === 0) return undefined
+
+  const out: string[] = []
+  for (const rw of rawWords) {
+    const lettersOnly = rw.replace(/[^A-Za-z]/g, '')
+    if (!lettersOnly) return undefined
+    const lower = lettersOnly.toLowerCase()
+    if (NUMBER_WORDS.has(lower)) return undefined
+    if (TRANSCRIPT_NAME_BLOCKLIST.has(lower)) return undefined
+    const proper = lettersOnly.charAt(0).toUpperCase() + lettersOnly.slice(1).toLowerCase()
+    if (!PROPER_NOUN_WORD.test(proper)) return undefined
+    out.push(proper)
+  }
+  return out.join(' ')
+}
+
+/** Agent asked for a name; match Retell copy like "Can I get your full name?" */
+function agentAsksForCallerName(content: string): boolean {
+  const t = content.toLowerCase()
+  return t.includes('full name') || t.includes('name')
+}
+
+/** Disconnection reasons we treat as missed / failed (needs follow-up). */
+const MISSED_DISCONNECTION_REASONS = new Set([
+  'dial_no_answer',
+  'dial_failed',
+  'dial_busy',
+  'error',
+  'call_error',
+  'telephony_error',
+  'telephony_provider_error',
+  'invalid_destination',
+  'concurrency_limit_reached',
+  'sip_routing_error',
+  'websocket_error',
+  'inbound_call_failed',
+])
+
+/** True if Retell reports an error status or a telephony / dial failure. */
+export function isCallFailed(call: RetellCall): boolean {
+  if (call.call_status === 'error') return true
+  const r = call.disconnection_reason
+  if (!r || typeof r !== 'string') return false
+  const key = r.trim().toLowerCase()
+  if (MISSED_DISCONNECTION_REASONS.has(key)) return true
+  if (/^dial_(no_answer|failed|busy|timeout)/.test(key)) return true
+  return false
+}
+
+/**
+ * First user reply after an agent turn that asks for (full) name.
+ * Very conservative: only ASCII proper-noun pairs like "Lucas" / "Lucas Simpson".
+ */
+export function extractCallerNameFromTranscript(turns: TranscriptTurn[]): string | undefined {
+  for (let i = 0; i < turns.length; i++) {
+    const turn = turns[i]
+    if (turn.role !== 'agent') continue
+    if (!agentAsksForCallerName(turn.content ?? '')) continue
+    for (let j = i + 1; j < turns.length; j++) {
+      if (turns[j].role === 'agent') break
+      if (turns[j].role === 'user') {
+        const raw = (turns[j].content ?? '').replace(/\s+/g, ' ').trim()
+        const remainder = stripLeadingNameIntros(raw)
+        return parseNuclearTranscriptName(remainder)
+      }
+    }
+  }
+  return undefined
 }
 
 // ─── Normalise a raw Retell call into our UI shape ────────────────────────────
@@ -123,8 +316,11 @@ export function normaliseCall(call: RetellCall): NormalisedCall {
   const dateISO = date.toISOString().split('T')[0]
   const dateFormatted = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 
-  // Caller name from metadata (set by N8N webhook enrichment) or fallback
-  const callerName = (call.metadata?.caller_name as string | undefined) ?? undefined
+  const metaRaw = call.metadata?.caller_name
+  const fromMeta =
+    typeof metaRaw === 'string' && metaRaw.trim() ? formatNameCandidate(metaRaw) : undefined
+  const fromTranscript = extractCallerNameFromTranscript(call.transcript_object ?? [])
+  const callerName = fromMeta ?? fromTranscript
 
   // summary: prefer Retell's own call_summary, else first 120 chars of transcript
   const summary =
@@ -148,6 +344,7 @@ export function normaliseCall(call: RetellCall): NormalisedCall {
     sentiment: call.call_analysis?.user_sentiment ?? 'Unknown',
     recordingUrl: call.recording_url,
     callType: call.call_type,
+    failed: isCallFailed(call),
   }
 }
 
@@ -175,7 +372,10 @@ export function computeStats(calls: NormalisedCall[]): DashboardStats {
   )
 
   const booked = thisMonth.filter((c) => c.outcome === 'booked').length
-  const qualified = thisMonth.filter((c) => c.outcome === 'qualified').length
+  const booking_deleted = thisMonth.filter((c) => c.outcome === 'booking_deleted').length
+  const booking_rescheduled = thisMonth.filter((c) => c.outcome === 'booking_rescheduled').length
+  const callback_requested = thisMonth.filter((c) => c.outcome === 'callback_requested').length
+  const quote_requested = thisMonth.filter((c) => c.outcome === 'quote_requested').length
   const not_a_fit = thisMonth.filter((c) => c.outcome === 'not_a_fit').length
   const info_only = thisMonth.filter((c) => c.outcome === 'info_only').length
 
@@ -203,9 +403,17 @@ export function computeStats(calls: NormalisedCall[]): DashboardStats {
     appointmentsBooked: booked,
     bookingRate: thisMonth.length > 0 ? Math.round((booked / thisMonth.length) * 100) : 0,
     avgDurationSeconds: avgDuration,
-    leadsQualified: qualified,
-    qualifyRate: thisMonth.length > 0 ? Math.round((qualified / thisMonth.length) * 100) : 0,
+    quotesRequested: quote_requested,
+    quoteRate: thisMonth.length > 0 ? Math.round((quote_requested / thisMonth.length) * 100) : 0,
     callsByDay,
-    outcomeBreakdown: { booked, qualified, not_a_fit, info_only },
+    outcomeBreakdown: {
+      booked,
+      booking_deleted,
+      booking_rescheduled,
+      callback_requested,
+      quote_requested,
+      not_a_fit,
+      info_only,
+    },
   }
 }

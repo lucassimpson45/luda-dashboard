@@ -8,6 +8,10 @@ const inter = Inter({ subsets: ['latin'] })
 export const metadata: Metadata = {
   title: 'Luda AI — Client Portal',
   description: 'Your AI receptionist dashboard',
+  icons: {
+    icon: '/luda-ai-logo.png',
+    apple: '/luda-ai-logo.png',
+  },
 }
 
 export const viewport: Viewport = {

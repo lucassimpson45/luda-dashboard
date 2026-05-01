@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { appendReviewFromPayload } from '@/lib/persistence'
 
+/** Reads now come from Airtable; GET kept for compatibility (empty list). */
 export async function GET() {
-  return NextResponse.json({
-    ok: false,
-    method: 'Use POST, not a browser visit.',
-    hint: 'n8n: add an HTTP Request node → POST → same URL → Body: JSON with your N8N_WEBHOOK_SECRET in `secret` plus author, rating, text, etc.',
-  })
+  return NextResponse.json({ reviews: [] })
 }
 
 export async function POST(req: NextRequest) {

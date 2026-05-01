@@ -34,7 +34,14 @@ export interface RetellCallAnalysis {
 
 // ─── Normalised call used throughout the dashboard ───────────────────────────
 
-export type CallOutcome = 'booked' | 'qualified' | 'not_a_fit' | 'info_only'
+export type CallOutcome =
+  | 'booked'
+  | 'booking_deleted'
+  | 'booking_rescheduled'
+  | 'callback_requested'
+  | 'quote_requested'
+  | 'not_a_fit'
+  | 'info_only'
 
 export interface NormalisedCall {
   id: string
@@ -52,6 +59,8 @@ export interface NormalisedCall {
   sentiment: string
   recordingUrl?: string
   callType: 'inbound' | 'outbound'
+  /** True when the call errored or disconnected for a dial / telephony failure (follow up). */
+  failed: boolean
 }
 
 // ─── Dashboard aggregate stats ───────────────────────────────────────────────
@@ -62,12 +71,17 @@ export interface DashboardStats {
   appointmentsBooked: number
   bookingRate: number
   avgDurationSeconds: number
-  leadsQualified: number
-  qualifyRate: number
+  /** Count of calls classified as `quote_requested` */
+  quotesRequested: number
+  /** % of calls this month with outcome `quote_requested` */
+  quoteRate: number
   callsByDay: { day: string; count: number }[]
   outcomeBreakdown: {
     booked: number
-    qualified: number
+    booking_deleted: number
+    booking_rescheduled: number
+    callback_requested: number
+    quote_requested: number
     not_a_fit: number
     info_only: number
   }
@@ -112,6 +126,48 @@ export interface N8NReviewPayload {
   sentiment?: string
 }
 
+/** Quote pipeline labels from Airtable (e.g. Quote Sent, Follow Up 1 Sent, Interested, Cold). */
+export type QuoteStatus = 'interested' | 'cold' | 'sent' | 'follow_up' | 'other'
+
+/** Normalised review outreach status (e.g. from Airtable). */
+export type ReviewStatus = 'sent' | 'clicked' | 'reviewed'
+
+/** `public.quotes` row in Supabase (snake_case columns), plus optional Airtable fields. */
+export interface QuoteLead {
+  id: string
+  received_at: string
+  external_id: string | null
+  lead_name: string | null
+  company: string | null
+  email: string | null
+  phone: string | null
+  /** Raw status from source (e.g. Airtable: Quote Sent, Follow Up 1 Sent, Interested, Cold). */
+  status: string | null
+  quote_value: string | null
+  notes: string | null
+  extra: Record<string, unknown> | null
+  /** Airtable Job Type */
+  service?: string | null
+  /** Airtable Last Email Sent (body) */
+  last_email_sent?: string | null
+  /** Derived follow-up index for UI */
+  sent_count?: number
+}
+
+/** `public.reviews` row in Supabase — `body` is the N8N `text` / UI message field */
+export interface ReviewRequest {
+  id: string
+  received_at: string
+  review_id: string | null
+  author: string | null
+  rating: number | null
+  platform: string | null
+  body: string | null
+  link: string | null
+  sentiment: string | null
+  extra: Record<string, unknown> | null
+}
+
 // Stored records (no secret)
 export interface StoredQuote {
   id: string
@@ -125,6 +181,12 @@ export interface StoredQuote {
     status?: string
     quote_value?: string
     notes?: string
+    /** Airtable Job Type */
+    service?: string
+    /** Airtable Last Email Sent (full body) */
+    lastEmailSent?: string
+    /** Derived: Follow Up N → N; Cold/Interested → rollup count when set */
+    sentCount?: number
   }
   /** Unlisted fields N8N may send, for forward compatibility */
   extra?: Record<string, unknown>
@@ -149,6 +211,19 @@ export interface StoredReview {
 
 export type DashboardTabId = 'receptionist' | 'quotes' | 'reviews' | 'outbound'
 
+// ─── Admin API ───────────────────────────────────────────────────────────────
+
+export type AdminClientSummary = {
+  id: string
+  name: string
+  logoPath: string
+  active: boolean
+  totalCalls: number
+  lastCallDate: string | null
+  appointmentsBooked: number
+  bookingRate: number
+}
+
 // ─── /api/health response ────────────────────────────────────────────────────
 
 export type HealthStatus = 'ok' | 'error' | 'unconfigured' | 'degraded'
@@ -164,15 +239,14 @@ export interface HealthEnvVarPresence {
   RETELL_AGENT_ID: boolean
   RETELL_OUTBOUND_AGENT_ID: boolean
   N8N_WEBHOOK_SECRET: boolean
-  DASHBOARD_PASSWORD: boolean
   NEXT_PUBLIC_APP_URL: boolean
-  KV_REST_API_URL: boolean
-  KV_REST_API_TOKEN: boolean
+  NEXT_PUBLIC_SUPABASE_URL: boolean
+  SUPABASE_SERVICE_ROLE_KEY: boolean
 }
 
 export interface HealthResponse {
   ok: boolean
-  store: { backend: 'vercel-kv' | 'file' | 'unconfigured'; message?: string }
+  store: { backend: 'supabase' | 'file' | 'unconfigured'; message?: string }
   retell: ServiceHealth
   /** Inbound/receptionist agent id present in env */
   receptionistAgent: { idSet: boolean }

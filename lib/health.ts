@@ -75,10 +75,9 @@ export async function getHealthResponse(): Promise<HealthResponse> {
       RETELL_AGENT_ID: Boolean(process.env.RETELL_AGENT_ID),
       RETELL_OUTBOUND_AGENT_ID: Boolean(process.env.RETELL_OUTBOUND_AGENT_ID),
       N8N_WEBHOOK_SECRET: Boolean(process.env.N8N_WEBHOOK_SECRET),
-      DASHBOARD_PASSWORD: Boolean(process.env.DASHBOARD_PASSWORD),
       NEXT_PUBLIC_APP_URL: Boolean(process.env.NEXT_PUBLIC_APP_URL),
-      KV_REST_API_URL: Boolean(process.env.KV_REST_API_URL),
-      KV_REST_API_TOKEN: Boolean(process.env.KV_REST_API_TOKEN),
+      NEXT_PUBLIC_SUPABASE_URL: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
+      SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
     },
     timestamp: new Date().toISOString(),
   }

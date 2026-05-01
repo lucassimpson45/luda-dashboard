@@ -1,6 +1,7 @@
 import { Phone } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { NormalisedCall } from '@/types'
+import { callerDisplayLine } from '@/lib/retell'
 import { OutcomeBadge } from './OutcomeBadge'
 
 type Props = { calls: NormalisedCall[]; error: string | null }
@@ -54,8 +55,15 @@ export function OutboundTab({ calls, error }: Props) {
                   {c.callType}
                 </span>
               </td>
-              <td className="max-w-[200px] truncate px-4 py-3 text-neutral-900 dark:text-neutral-100">
-                {c.callerName ?? c.callerNumber}
+              <td className="max-w-[220px] px-4 py-3 text-neutral-900 dark:text-neutral-100">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate">{callerDisplayLine(c)}</span>
+                  {c.failed && (
+                    <span className="shrink-0 rounded-md bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700 dark:bg-red-950/80 dark:text-red-300">
+                      Missed
+                    </span>
+                  )}
+                </div>
               </td>
               <td className="px-4 py-3 text-xs text-neutral-400">{c.durationFormatted}</td>
               <td className="px-4 py-3">

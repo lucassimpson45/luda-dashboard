@@ -2,18 +2,50 @@ import type { CallOutcome } from '@/types'
 
 export const BRAND = '#2E7DFF'
 
-export const OUTCOME_CONFIG: Record<CallOutcome, { label: string; bg: string; text: string; dot: string }> = {
+/** Stable order for donut chart and filters */
+export const CALL_OUTCOME_ORDER: CallOutcome[] = [
+  'booked',
+  'booking_deleted',
+  'booking_rescheduled',
+  'callback_requested',
+  'quote_requested',
+  'not_a_fit',
+  'info_only',
+]
+
+export const OUTCOME_CONFIG: Record<
+  CallOutcome,
+  { label: string; bg: string; text: string; dot: string }
+> = {
   booked: {
     label: 'Appointment booked',
+    bg: 'bg-emerald-50 dark:bg-emerald-950/50',
+    text: 'text-emerald-800 dark:text-emerald-200',
+    dot: '#16A34A',
+  },
+  booking_deleted: {
+    label: 'Booking deleted',
+    bg: 'bg-red-50 dark:bg-red-950/50',
+    text: 'text-red-800 dark:text-red-200',
+    dot: '#DC2626',
+  },
+  booking_rescheduled: {
+    label: 'Rescheduled',
+    bg: 'bg-violet-50 dark:bg-violet-950/50',
+    text: 'text-violet-800 dark:text-violet-200',
+    dot: '#7C3AED',
+  },
+  callback_requested: {
+    label: 'Callback requested',
     bg: 'bg-blue-50 dark:bg-blue-950/50',
     text: 'text-blue-800 dark:text-blue-200',
-    dot: BRAND,
+    dot: '#2563EB',
   },
-  qualified: {
-    label: 'Lead qualified',
-    bg: 'bg-sky-50 dark:bg-sky-950/50',
-    text: 'text-sky-800 dark:text-sky-200',
-    dot: '#0EA5E9',
+  quote_requested: {
+    label: 'Quote requested',
+    bg: 'bg-amber-50 dark:bg-amber-950/50',
+    text: 'text-amber-900 dark:text-amber-200',
+    dot: '#D97706',
   },
   not_a_fit: {
     label: 'Not a fit',

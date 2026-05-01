@@ -1,8 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Allow Retell & N8N domains for any future image/media
+  // Remote hosts only — files in /public (e.g. /luda-no-background.png) are always allowed.
   images: {
-    domains: ['retellai.com'],
+    remotePatterns: [{ protocol: 'https', hostname: 'retellai.com', pathname: '/**' }],
   },
 }
 

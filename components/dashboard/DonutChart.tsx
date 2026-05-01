@@ -1,24 +1,22 @@
 import type { DashboardStats } from '@/types'
-import { BRAND } from './outcome-config'
+import { CALL_OUTCOME_ORDER, OUTCOME_CONFIG } from './outcome-config'
 
 export function DonutChart({ stats }: { stats: DashboardStats }) {
-  const { booked, qualified, not_a_fit, info_only } = stats.outcomeBreakdown
   const total = stats.totalCalls || 1
 
-  const slices = [
-    [booked,    BRAND,   'Booked'],
-    [qualified, '#0EA5E9', 'Qualified'],
-    [not_a_fit, '#EA580C', 'Not a fit'],
-    [info_only, '#737373', 'Info only'],
-  ] as [number, string, string][]
+  const slices = CALL_OUTCOME_ORDER.map((key) => {
+    const val = stats.outcomeBreakdown[key]
+    const { dot, label } = OUTCOME_CONFIG[key]
+    return [val, dot, label] as [number, string, string]
+  })
 
   const r = 38
   const circ = 2 * Math.PI * r
   let offset = 0
 
   return (
-    <div className="flex items-center gap-6">
-      <svg width={100} height={100} viewBox="0 0 100 100" className="shrink-0">
+    <div className="flex min-w-0 flex-col items-stretch gap-4 sm:flex-row sm:items-center sm:gap-6">
+      <svg width={100} height={100} viewBox="0 0 100 100" className="mx-auto shrink-0 sm:mx-0">
         <circle cx={50} cy={50} r={r} fill="none" className="stroke-neutral-200 dark:stroke-neutral-800" strokeWidth={14} />
         {slices.map(([val, color], i) => {
           const dash = (val / total) * circ
@@ -27,7 +25,9 @@ export function DonutChart({ stats }: { stats: DashboardStats }) {
           return (
             <circle
               key={i}
-              cx={50} cy={50} r={r}
+              cx={50}
+              cy={50}
+              r={r}
               fill="none"
               stroke={color}
               strokeWidth={14}
@@ -45,11 +45,12 @@ export function DonutChart({ stats }: { stats: DashboardStats }) {
         </text>
       </svg>
 
-      <div className="flex flex-col gap-2">
+      <div className="flex max-h-[220px] flex-col gap-1.5 overflow-y-auto pr-1">
         {slices.map(([val, color, label]) => (
           <div key={label} className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
             <div className="h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />
-            {label} — {val}
+            <span className="min-w-0 truncate">{label}</span>
+            <span className="shrink-0 text-neutral-400">— {val}</span>
           </div>
         ))}
       </div>

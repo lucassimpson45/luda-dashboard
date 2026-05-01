@@ -1,16 +1,14 @@
 import { cookies } from 'next/headers'
-
-const SESSION_COOKIE = 'luda_session'
-const SESSION_VALUE = 'authenticated'
+import { CLIENT_SESSION_COOKIE, isClientSessionCookie } from '@/lib/client-session'
 
 export function isAuthenticated(): boolean {
   const cookieStore = cookies()
-  return cookieStore.get(SESSION_COOKIE)?.value === SESSION_VALUE
+  const v = cookieStore.get(CLIENT_SESSION_COOKIE)?.value
+  return isClientSessionCookie(v)
 }
 
-export function setAuthCookie(res: Response): void {
-  res.headers.set(
-    'Set-Cookie',
-    `${SESSION_COOKIE}=${SESSION_VALUE}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 7}`
-  )
+export function getClientSessionId(): string | null {
+  const cookieStore = cookies()
+  const v = cookieStore.get(CLIENT_SESSION_COOKIE)?.value
+  return isClientSessionCookie(v) ? v! : null
 }

@@ -11,7 +11,7 @@ export function ReceptionistOverview({ stats }: Props) {
 
   return (
     <>
-      <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="mb-5 grid min-w-0 grid-cols-2 gap-2 sm:gap-3 md:grid-cols-4">
         <MetricCard
           label="Calls this month"
           value={String(stats.totalCalls)}
@@ -30,14 +30,14 @@ export function ReceptionistOverview({ stats }: Props) {
           sub="min:sec"
         />
         <MetricCard
-          label="Leads qualified"
-          value={String(stats.leadsQualified)}
-          sub={`${stats.qualifyRate}% of all calls`}
+          label="Quotes requested"
+          value={String(stats.quotesRequested)}
+          sub={`${stats.quoteRate}% of all calls`}
           subPositive
         />
       </div>
 
-      <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="mb-5 grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
         <div className="rounded-2xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900/80">
           <p className="mb-4 text-sm font-medium text-neutral-900 dark:text-white">Calls by day of week</p>
           <div className="flex flex-col gap-2">
