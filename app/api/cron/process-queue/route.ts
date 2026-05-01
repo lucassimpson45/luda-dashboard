@@ -1,19 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { sendSms } from '@/lib/messaging/sms'
-import { sendEmail } from '@/lib/messaging/email'
+import { sendEmail, type CampaignSequenceStep } from '@/lib/messaging/email'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-type SequenceStep = {
-  step: number
-  delay_hours: number
-  channel: string
-  template: string
-}
+type SequenceStep = CampaignSequenceStep
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization')
@@ -103,6 +98,9 @@ export async function GET(req: NextRequest) {
       metadata: contact.metadata,
     }
 
+    const smsTemplateText = currentStep.sms_template ?? currentStep.template ?? ''
+    const emailTemplateText = currentStep.email_template ?? currentStep.template ?? ''
+
     const advanceAfterSend = async () => {
       const nextStep = sequence[stepIndex + 1]
       const nextSendAt = nextStep
@@ -126,7 +124,7 @@ export async function GET(req: NextRequest) {
         clientId: contact.client_id,
         campaignId: contact.campaign_id,
         stepIndex,
-        template: currentStep.template,
+        template: smsTemplateText,
         fromNumber: config.twilio_number,
         contact: {
           name: contact.name,
@@ -153,7 +151,7 @@ export async function GET(req: NextRequest) {
         clientId: contact.client_id,
         campaignId: contact.campaign_id,
         stepIndex,
-        template: currentStep.template,
+        template: emailTemplateText,
         fromEmail: config.resend_from_email.trim(),
         fromName: config.resend_from_name,
         toEmail: contact.email.trim(),
@@ -184,7 +182,7 @@ export async function GET(req: NextRequest) {
         clientId: contact.client_id,
         campaignId: contact.campaign_id,
         stepIndex,
-        template: currentStep.template,
+        template: smsTemplateText,
         fromNumber: config.twilio_number,
         contact: {
           name: contact.name,
@@ -209,7 +207,7 @@ export async function GET(req: NextRequest) {
         clientId: contact.client_id,
         campaignId: contact.campaign_id,
         stepIndex,
-        template: currentStep.template,
+        template: emailTemplateText,
         fromEmail: config.resend_from_email.trim(),
         fromName: config.resend_from_name,
         toEmail: contact.email.trim(),

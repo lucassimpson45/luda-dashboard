@@ -1,6 +1,17 @@
 import { createClient } from '@supabase/supabase-js'
 import { renderTemplate } from './templates'
 
+/** Mirrors outbound campaign `sequence` JSON items; cron resolves SMS/email templates. */
+export type CampaignSequenceStep = {
+  step: number
+  delay_hours: number
+  channel: string
+  /** Legacy single template when sms/email-specific fields are absent */
+  template?: string
+  sms_template?: string
+  email_template?: string
+}
+
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
