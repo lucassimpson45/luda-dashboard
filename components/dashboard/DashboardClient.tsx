@@ -5,12 +5,7 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { clsx } from 'clsx'
 import { Headphones, FileText, MessageSquareQuote, PhoneOutgoing } from 'lucide-react'
-import type {
-  DashboardTabId,
-  NormalisedCall,
-  DashboardStats,
-  StoredReview,
-} from '@/types'
+import type { DashboardTabId, NormalisedCall, DashboardStats } from '@/types'
 import { DashboardHeader } from './DashboardHeader'
 import { ReceptionistTab } from './ReceptionistTab'
 import { QuoteFollowUpTab, type FollowUpContact } from './QuoteFollowUpTab'
@@ -45,13 +40,12 @@ type InitialBundle = {
   receptionist: { calls: NormalisedCall[]; stats: DashboardStats | null; error: string | null }
   outbound: { calls: NormalisedCall[]; error: string | null }
   followUpContacts: FollowUpContact[]
-  reviews: StoredReview[]
+  reviewRequestContacts: FollowUpContact[]
 }
 
 type CallsApiOk = { calls: NormalisedCall[]; stats: DashboardStats }
 type OutboundApiOk = { calls: NormalisedCall[]; error: string | null }
 type FollowupApiOk = { contacts: FollowUpContact[] }
-type ReviewsApiOk = { reviews: StoredReview[] }
 
 export default function DashboardClient({
   businessName,
@@ -82,17 +76,17 @@ export default function DashboardClient({
   const [outboundCalls, setOutboundCalls] = useState(initial.outbound.calls)
   const [outError, setOutError] = useState<string | null>(initial.outbound.error)
   const [followUpContacts, setFollowUpContacts] = useState(initial.followUpContacts)
-  const [reviews, setReviews] = useState(initial.reviews)
+  const [reviewRequestContacts, setReviewRequestContacts] = useState(initial.reviewRequestContacts)
   const [refreshing, setRefreshing] = useState(false)
 
   const refreshAll = useCallback(async () => {
     setRefreshing(true)
     try {
-      const [cRes, oRes, fRes, rRes] = await Promise.all([
+      const [cRes, oRes, quoteFollowRes, reviewFollowRes] = await Promise.all([
         fetch('/api/calls'),
         fetch('/api/outbound'),
-        fetch('/api/followup'),
-        fetch('/api/reviews'),
+        fetch('/api/followup?type=quote_followup'),
+        fetch('/api/followup?type=review_request'),
       ])
 
       if (cRes.ok) {
@@ -113,14 +107,14 @@ export default function DashboardClient({
         setOutError(`Outbound request failed (${oRes.status})`)
       }
 
-      if (fRes.ok) {
-        const data = (await fRes.json()) as FollowupApiOk
+      if (quoteFollowRes.ok) {
+        const data = (await quoteFollowRes.json()) as FollowupApiOk
         setFollowUpContacts(data.contacts)
       }
 
-      if (rRes.ok) {
-        const data = (await rRes.json()) as ReviewsApiOk
-        setReviews(data.reviews)
+      if (reviewFollowRes.ok) {
+        const data = (await reviewFollowRes.json()) as FollowupApiOk
+        setReviewRequestContacts(data.contacts)
       }
     } catch (e) {
       console.error('[dashboard refresh]', e)
@@ -180,7 +174,7 @@ export default function DashboardClient({
           <ReceptionistTab calls={calls} stats={stats} error={recError} />
         )}
         {tab === 'quotes' && <QuoteFollowUpTab contacts={followUpContacts} />}
-        {tab === 'reviews' && <ReviewsTab reviews={reviews} />}
+        {tab === 'reviews' && <ReviewsTab contacts={reviewRequestContacts} />}
         {tab === 'outbound' && <OutboundTab calls={outboundCalls} error={outError} />}
 
         <p className="mt-8 flex flex-wrap items-center justify-center gap-2 text-center text-xs text-neutral-300 dark:text-neutral-600">

@@ -8,10 +8,9 @@ import {
   normaliseCall,
   computeStats,
 } from '@/lib/retell'
-import { fetchReviews, reviewRequestsToStored } from '@/lib/airtable'
 import DashboardClient from '@/components/dashboard/DashboardClient'
 import type { FollowUpContact } from '@/components/dashboard/QuoteFollowUpTab'
-import type { NormalisedCall, DashboardStats, StoredReview } from '@/types'
+import type { NormalisedCall, DashboardStats } from '@/types'
 
 export const revalidate = 60
 
@@ -64,25 +63,32 @@ export default async function DashboardPage() {
   }
 
   let followUpContacts: FollowUpContact[] = []
-  let reviews: StoredReview[] = []
+  let reviewRequestContacts: FollowUpContact[] = []
   try {
     const h = headers()
     const host = h.get('host') ?? 'localhost:3000'
     const protocol = process.env.NODE_ENV === 'development' ? 'http' : 'https'
-    const [followupRes, reviewRows] = await Promise.all([
-      fetch(`${protocol}://${host}/api/followup`, {
+    const cookie = h.get('cookie') ?? ''
+    const [quoteRes, reviewRes] = await Promise.all([
+      fetch(`${protocol}://${host}/api/followup?type=quote_followup`, {
         cache: 'no-store',
-        headers: { cookie: h.get('cookie') ?? '' },
+        headers: { cookie },
       }),
-      fetchReviews(),
+      fetch(`${protocol}://${host}/api/followup?type=review_request`, {
+        cache: 'no-store',
+        headers: { cookie },
+      }),
     ])
-    if (followupRes.ok) {
-      const data = (await followupRes.json()) as { contacts: FollowUpContact[] }
+    if (quoteRes.ok) {
+      const data = (await quoteRes.json()) as { contacts: FollowUpContact[] }
       followUpContacts = data.contacts ?? []
     }
-    reviews = reviewRequestsToStored(reviewRows)
+    if (reviewRes.ok) {
+      const data = (await reviewRes.json()) as { contacts: FollowUpContact[] }
+      reviewRequestContacts = data.contacts ?? []
+    }
   } catch (e) {
-    console.error('[dashboard] followup/reviews', e)
+    console.error('[dashboard] followup', e)
   }
 
   return (
@@ -94,7 +100,7 @@ export default async function DashboardPage() {
         receptionist: { calls, stats, error },
         outbound: { calls: outboundCalls, error: outboundError },
         followUpContacts,
-        reviews,
+        reviewRequestContacts,
       }}
     />
   )

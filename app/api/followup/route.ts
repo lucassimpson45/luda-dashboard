@@ -1,6 +1,9 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getClientSessionId, isAuthenticated } from '@/lib/auth'
+
+const CAMPAIGN_TYPES = ['quote_followup', 'review_request'] as const
+type CampaignTypeFilter = (typeof CAMPAIGN_TYPES)[number]
 
 function getSupabaseAdmin() {
   return createClient(
@@ -9,7 +12,15 @@ function getSupabaseAdmin() {
   )
 }
 
-export async function GET() {
+function parseCampaignType(raw: string | null): CampaignTypeFilter | null {
+  if (raw == null || raw === '') return null
+  if ((CAMPAIGN_TYPES as readonly string[]).includes(raw)) {
+    return raw as CampaignTypeFilter
+  }
+  return null
+}
+
+export async function GET(req: NextRequest) {
   if (!isAuthenticated()) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -19,12 +30,25 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const rawType = req.nextUrl.searchParams.get('type')
+  const typeFilter = parseCampaignType(rawType)
+  if (rawType != null && rawType !== '' && typeFilter == null) {
+    return NextResponse.json(
+      { error: `type must be ${CAMPAIGN_TYPES.join(' or ')}` },
+      { status: 400 }
+    )
+  }
+
   const supabaseAdmin = getSupabaseAdmin()
 
-  // Fetch all contacts with their most recent messages per channel
-  const { data: contacts, error } = await supabaseAdmin
+  const campaignEmbed = typeFilter
+    ? `outbound_campaigns!inner ( type, name )`
+    : `outbound_campaigns ( type, name )`
+
+  let query = supabaseAdmin
     .from('outbound_contacts')
-    .select(`
+    .select(
+      `
       id,
       name,
       phone,
@@ -34,10 +58,17 @@ export async function GET() {
       created_at,
       metadata,
       campaign_id,
-      outbound_campaigns ( type, name )
-    `)
+      ${campaignEmbed}
+    `
+    )
     .eq('client_id', clientId)
     .order('created_at', { ascending: false })
+
+  if (typeFilter) {
+    query = query.eq('outbound_campaigns.type', typeFilter)
+  }
+
+  const { data: contacts, error } = await query
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
