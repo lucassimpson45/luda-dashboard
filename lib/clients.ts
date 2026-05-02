@@ -28,6 +28,7 @@ export type ClientUpdateInput = {
   password?: string
   logo_url?: string | null
   active?: boolean
+  enabled_features?: string[] | null
 }
 
 const PUBLIC_FIELDS =
@@ -175,6 +176,7 @@ export async function updateClient(
     row.logo_url = patch.logo_url === null || patch.logo_url === '' ? null : patch.logo_url.trim()
   }
   if (patch.active !== undefined) row.active = patch.active
+  if (patch.enabled_features !== undefined) row.enabled_features = patch.enabled_features
 
   if (Object.keys(row).length === 0) {
     return getClientById(id)
