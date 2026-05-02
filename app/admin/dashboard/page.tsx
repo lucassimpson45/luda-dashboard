@@ -22,6 +22,15 @@ export default function AdminDashboardPage() {
   const router = useRouter()
   const [clients, setClients] = useState<AdminClientSummary[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [showOnboardedBanner, setShowOnboardedBanner] = useState(false)
+
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search)
+    if (sp.get('onboarded') === '1') {
+      setShowOnboardedBanner(true)
+      router.replace('/admin/dashboard', { scroll: false })
+    }
+  }, [router])
 
   const load = useCallback(async () => {
     const res = await fetch('/api/admin/clients')
@@ -73,6 +82,19 @@ export default function AdminDashboardPage() {
             </button>
           </div>
         </header>
+
+        {showOnboardedBanner && (
+          <div className="mb-6 flex items-start justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100">
+            <p>Client created successfully. They can sign in at <code className="rounded bg-emerald-100/80 px-1 dark:bg-emerald-900/60">/login</code> with the password you set.</p>
+            <button
+              type="button"
+              onClick={() => setShowOnboardedBanner(false)}
+              className="shrink-0 text-emerald-700 underline dark:text-emerald-200"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {error && (
           <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">

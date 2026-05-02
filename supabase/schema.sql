@@ -46,3 +46,37 @@ create table if not exists public.clients (
 );
 
 create index if not exists clients_active_idx on public.clients (active);
+
+-- Optional: IANA timezone for send windows / reporting (admin onboarding).
+alter table public.clients add column if not exists timezone text;
+
+-- Per-client Twilio / Resend / webhook (admin onboarding extends columns as needed).
+create table if not exists public.clients_messaging_config (
+  client_id uuid primary key references public.clients (id) on delete cascade,
+  twilio_number text,
+  notification_email text,
+  resend_from_email text,
+  resend_from_name text,
+  jobber_webhook_secret text,
+  google_review_url text,
+  outbound_retell_agent_id text,
+  agent_phone_number text
+);
+
+create table if not exists public.outbound_campaigns (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  client_id uuid not null references public.clients (id) on delete cascade,
+  name text,
+  type text not null,
+  channel text,
+  sequence jsonb not null default '[]'::jsonb,
+  is_active boolean not null default true,
+  send_window_start text,
+  send_window_end text,
+  follow_up_interval_hours double precision,
+  max_attempts int
+);
+
+create index if not exists outbound_campaigns_client_idx on public.outbound_campaigns (client_id);
+create index if not exists outbound_campaigns_type_idx on public.outbound_campaigns (client_id, type);
