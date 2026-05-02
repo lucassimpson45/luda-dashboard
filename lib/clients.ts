@@ -8,6 +8,8 @@ export type ClientPublic = {
   retell_agent_id: string
   logo_url: string | null
   active: boolean
+  /** When null or empty, dashboard shows all feature tabs. */
+  enabled_features: string[] | null
 }
 
 export type ClientCreateInput = {
@@ -29,7 +31,13 @@ export type ClientUpdateInput = {
 }
 
 const PUBLIC_FIELDS =
-  'id, created_at, name, business_type, retell_agent_id, logo_url, active' as const
+  'id, created_at, name, business_type, retell_agent_id, logo_url, active, enabled_features' as const
+
+function parseEnabledFeatures(value: unknown): string[] | null {
+  if (value == null) return null
+  if (!Array.isArray(value)) return null
+  return value.map((v) => String(v))
+}
 
 function rowToPublic(row: Record<string, unknown>): ClientPublic {
   return {
@@ -40,6 +48,7 @@ function rowToPublic(row: Record<string, unknown>): ClientPublic {
     retell_agent_id: String(row.retell_agent_id),
     logo_url: row.logo_url != null ? String(row.logo_url) : null,
     active: Boolean(row.active),
+    enabled_features: parseEnabledFeatures(row.enabled_features),
   }
 }
 

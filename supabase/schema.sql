@@ -41,7 +41,8 @@ create table if not exists public.clients (
   retell_agent_id text not null,
   password text not null,
   logo_url text,
-  active boolean not null default true
+  active boolean not null default true,
+  enabled_features text[] default null
 );
 
 create index if not exists clients_active_idx on public.clients (active);

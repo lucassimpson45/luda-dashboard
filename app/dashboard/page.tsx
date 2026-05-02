@@ -89,6 +89,7 @@ export default async function DashboardPage() {
     <DashboardClient
       businessName={client.name}
       logoUrl={client.logo_url}
+      enabledFeatures={client.enabled_features}
       initial={{
         receptionist: { calls, stats, error },
         outbound: { calls: outboundCalls, error: outboundError },

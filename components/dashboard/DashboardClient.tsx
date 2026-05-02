@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { clsx } from 'clsx'
@@ -28,6 +28,19 @@ const TABS: {
   { id: 'outbound', label: 'Outbound', icon: PhoneOutgoing },
 ]
 
+const TAB_FEATURE: Record<DashboardTabId, string> = {
+  receptionist: 'receptionist',
+  quotes: 'quote_followup',
+  reviews: 'review_request',
+  outbound: 'outbound',
+}
+
+function visibleTabs(enabledFeatures: string[] | null | undefined) {
+  if (enabledFeatures == null || enabledFeatures.length === 0) return TABS
+  const allowed = new Set(enabledFeatures)
+  return TABS.filter((t) => allowed.has(TAB_FEATURE[t.id]))
+}
+
 type InitialBundle = {
   receptionist: { calls: NormalisedCall[]; stats: DashboardStats | null; error: string | null }
   outbound: { calls: NormalisedCall[]; error: string | null }
@@ -44,13 +57,25 @@ export default function DashboardClient({
   businessName,
   logoUrl,
   initial,
+  enabledFeatures,
 }: {
   businessName: string
   logoUrl: string | null
   initial: InitialBundle
+  enabledFeatures: string[] | null
 }) {
   const router = useRouter()
-  const [tab, setTab] = useState<DashboardTabId>('receptionist')
+  const tabs = useMemo(() => visibleTabs(enabledFeatures), [enabledFeatures])
+  const [tab, setTab] = useState<DashboardTabId>(
+    () => visibleTabs(enabledFeatures)[0]?.id ?? 'receptionist'
+  )
+
+  useEffect(() => {
+    const ids = tabs.map((t) => t.id)
+    if (!ids.includes(tab)) {
+      setTab(ids[0] ?? 'receptionist')
+    }
+  }, [tabs, tab])
   const [calls, setCalls] = useState(initial.receptionist.calls)
   const [stats, setStats] = useState<DashboardStats | null>(initial.receptionist.stats)
   const [recError, setRecError] = useState<string | null>(initial.receptionist.error)
@@ -128,7 +153,7 @@ export default function DashboardClient({
         />
 
         <div className="mb-6 flex gap-0.5 overflow-x-auto border-b border-neutral-200 pb-px dark:border-neutral-800 sm:gap-1">
-          {TABS.map((t) => {
+          {tabs.map((t) => {
             const Icon = t.icon
             return (
               <button
