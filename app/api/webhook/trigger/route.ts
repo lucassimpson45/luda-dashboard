@@ -207,6 +207,30 @@ async function enqueueContact(
     }
   }
 
+  if (row.phone) {
+    const { data: suppressedByPhone } = await supabaseAdmin
+      .from('opted_out_contacts')
+      .select('id')
+      .eq('client_id', clientId)
+      .eq('phone', row.phone)
+      .maybeSingle()
+    if (suppressedByPhone) {
+      return NextResponse.json({ status: 'suppressed' as const }, { status: 200 })
+    }
+  }
+
+  if (row.email) {
+    const { data: suppressedByEmail } = await supabaseAdmin
+      .from('opted_out_contacts')
+      .select('id')
+      .eq('client_id', clientId)
+      .eq('email', row.email)
+      .maybeSingle()
+    if (suppressedByEmail) {
+      return NextResponse.json({ status: 'suppressed' as const }, { status: 200 })
+    }
+  }
+
   const now = new Date().toISOString()
 
   const { data: inserted, error: insErr } = await supabaseAdmin

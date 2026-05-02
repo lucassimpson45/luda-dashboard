@@ -80,6 +80,13 @@ export async function POST(req: NextRequest) {
     .update({ status: newStatus })
     .eq('id', contact.id)
 
+  if (isOptOut) {
+    await supabaseAdmin.from('opted_out_contacts').insert({
+      client_id: config.client_id,
+      phone: inboundFrom,
+    })
+  }
+
   await supabaseAdmin.from('outbound_events').insert({
     message_id: lastMessage?.id ?? null,
     contact_id: contact.id,
