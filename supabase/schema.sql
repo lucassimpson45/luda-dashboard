@@ -74,9 +74,13 @@ create table if not exists public.outbound_campaigns (
   is_active boolean not null default true,
   send_window_start text,
   send_window_end text,
+  timezone text,
   follow_up_interval_hours double precision,
   max_attempts int
 );
 
 create index if not exists outbound_campaigns_client_idx on public.outbound_campaigns (client_id);
 create index if not exists outbound_campaigns_type_idx on public.outbound_campaigns (client_id, type);
+
+-- IANA timezone for campaign send windows (falls back to clients.timezone in cron).
+alter table public.outbound_campaigns add column if not exists timezone text;

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { sendSms } from '@/lib/messaging/sms'
 import { sendEmail, type CampaignSequenceStep } from '@/lib/messaging/email'
+import { isWithinSendWindow, nextSendWindowOpenUtc } from '@/lib/messaging/send-window'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
     return new NextResponse('Unauthorized', { status: 401 })
   }
 
-  const now = new Date().toISOString()
+  const nowIso = new Date().toISOString()
 
   const { data: contacts, error } = await supabaseAdmin
     .from('outbound_contacts')
@@ -32,14 +33,18 @@ export async function GET(req: NextRequest) {
       email,
       metadata,
       current_step,
+      clients ( timezone ),
       outbound_campaigns (
         id,
         sequence,
-        channel
+        channel,
+        send_window_start,
+        send_window_end,
+        timezone
       )
     `)
     .eq('status', 'active')
-    .lte('next_send_at', now)
+    .lte('next_send_at', nowIso)
     .not('next_send_at', 'is', null)
     .limit(50)
 
@@ -58,7 +63,16 @@ export async function GET(req: NextRequest) {
       id: string
       sequence: SequenceStep[]
       channel: string | null
+      send_window_start?: string | null
+      send_window_end?: string | null
+      timezone?: string | null
     } | null
+
+    const clientEmbed = contact.clients as unknown as { timezone?: string | null } | null
+    const clientTz =
+      clientEmbed && typeof clientEmbed === 'object' && 'timezone' in clientEmbed
+        ? clientEmbed.timezone
+        : null
 
     const { data: configRow } = await supabaseAdmin
       .from('clients_messaging_config')
@@ -85,6 +99,38 @@ export async function GET(req: NextRequest) {
         .update({ status: 'completed', next_send_at: null })
         .eq('id', contact.id)
       results.push({ contactId: contact.id, action: 'completed' })
+      continue
+    }
+
+    const campaignTz =
+      (typeof campaign.timezone === 'string' && campaign.timezone.trim()) ||
+      (typeof clientTz === 'string' && clientTz.trim()) ||
+      'UTC'
+
+    const nowDate = new Date()
+    if (
+      !isWithinSendWindow(
+        nowDate,
+        campaignTz,
+        campaign.send_window_start,
+        campaign.send_window_end
+      )
+    ) {
+      const nextSendAt = nextSendWindowOpenUtc(
+        nowDate,
+        campaignTz,
+        campaign.send_window_start,
+        campaign.send_window_end
+      )
+      await supabaseAdmin
+        .from('outbound_contacts')
+        .update({ next_send_at: nextSendAt.toISOString() })
+        .eq('id', contact.id)
+      results.push({
+        contactId: contact.id,
+        action: 'rescheduled',
+        nextSendAt: nextSendAt.toISOString(),
+      })
       continue
     }
 
